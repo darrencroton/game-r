@@ -1,0 +1,25 @@
+{
+  "name": "game-r",
+  "version": "0.1.0",
+  "description": "An engine where LLMs play and test HTML web games.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "game-r": "src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "game-r": "node src/cli.ts",
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "playwright": "1.63.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  }
+}

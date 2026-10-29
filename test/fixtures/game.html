@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dodge</title>
+<style>
+  body { margin: 0; font: 16px system-ui, sans-serif; background: #111; color: #eee; }
+  #menu, #over { padding: 16px; }
+  canvas { display: block; background: #123; touch-action: none; }
+  dialog { background: #222; color: #eee; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<section id="menu">
+  <h1>Dodge</h1>
+  <button id="start">Start</button>
+  <button id="settings">Settings</button>
+  <button id="break">Break</button>
+</section>
+<canvas id="board" width="400" height="300" hidden></canvas>
+<section id="over" hidden>
+  <h2>Game over</h2>
+  <p>Score: <output id="final">0</output></p>
+  <button id="again">Play again</button>
+</section>
+<dialog id="prefs">
+  <label><input type="checkbox" id="hard"> Hard mode</label>
+  <button id="close">Close</button>
+</dialog>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const board = $('board');
+  const ctx = board.getContext('2d');
+  const game = (window.game = { state: 'menu', x: 200, score: 0, frames: 0, ticks: 0, rocks: [], keys: {}, taps: 0, gestures: [] });
+  let last = 0;
+  let spawner = 0;
+
+  function start() {
+    Object.assign(game, { state: 'playing', x: 200, score: 0, rocks: [] });
+    $('menu').hidden = true;
+    $('over').hidden = true;
+    board.hidden = false;
+    last = performance.now();
+    clearInterval(spawner);
+    spawner = setInterval(() => {
+      game.ticks++;
+      game.rocks.push({ x: (game.ticks * 97) % 380, y: 0 });
+    }, $('hard').checked ? 250 : 500);
+  }
+
+  function end() {
+    game.state = 'over';
+    clearInterval(spawner);
+    $('final').textContent = Math.floor(game.score);
+    board.hidden = true;
+    $('over').hidden = false;
+  }
+
+  function frame(now) {
+    game.frames++;
+    const dt = Math.min(100, now - last) / 1000;
+    last = now;
+    if (game.state === 'playing') {
+      if (game.keys.ArrowLeft) game.x -= 200 * dt;
+      if (game.keys.ArrowRight) game.x += 200 * dt;
+      game.x = Math.max(10, Math.min(390, game.x));
+      game.score += dt * 10;
+      for (const r of game.rocks) r.y += 120 * dt;
+      game.rocks = game.rocks.filter((r) => r.y < 300);
+      if (game.rocks.some((r) => r.y > 270 && Math.abs(r.x + 10 - game.x) < 20)) end();
+      ctx.fillStyle = '#123';
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = '#e44';
+      for (const r of game.rocks) ctx.fillRect(r.x, r.y, 20, 20);
+      ctx.fillStyle = '#4e4';
+      ctx.fillRect(game.x - 10, 280, 20, 20);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`Score ${Math.floor(game.score)}`, 8, 14);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame((now) => { last = now; frame(now); });
+
+  addEventListener('keydown', (e) => { game.keys[e.key] = true; });
+  addEventListener('keyup', (e) => { game.keys[e.key] = false; });
+  board.addEventListener('pointerdown', (e) => { game.taps++; game.x = e.offsetX; });
+  let fingers = 0;
+  board.addEventListener('touchstart', (e) => { fingers = Math.max(fingers, e.touches.length); });
+  board.addEventListener('touchend', (e) => {
+    if (e.touches.length > 0) return;
+    game.gestures.push(`${fingers}-finger`);
+    fingers = 0;
+  });
+  $('start').addEventListener('click', start);
+  $('again').addEventListener('click', start);
+  $('settings').addEventListener('click', () => $('prefs').showModal());
+  $('close').addEventListener('click', () => $('prefs').close());
+  $('break').addEventListener('click', () => { null.boom(); });
+</script>
+</body>
+</html>

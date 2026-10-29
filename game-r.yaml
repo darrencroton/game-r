@@ -1,0 +1,67 @@
+# game-r.yaml — every user option lives here.
+# `defaults` apply to every campaign; a campaign overrides only what it sets.
+# API keys are read from the environment variable named in model.api_key_env, never from this file.
+
+defaults:
+  model:
+    provider: anthropic              # anthropic | openai-compatible
+    name: claude-opus-5-5
+    base_url: null                   # openai-compatible: e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1
+    api_key_env: ANTHROPIC_API_KEY
+    max_output_tokens: 16000
+    reasoning: medium                # off | low | medium | high | max (passed through where supported)
+    context_window: 200000
+    price_per_mtok: { input: 5, output: 25 }   # USD per million tokens; used for cost and limits.cost_usd
+  browser:
+    engine: chromium                 # chromium | firefox | webkit
+    headless: true                   # false to watch it play
+    device: desktop                  # "desktop" or a Playwright device name, e.g. "Pixel 7", "iPad Pro 11"
+    viewport: null                   # [width, height] overrides the device's viewport
+    profile: campaign                # campaign: saved game data persists across runs | run: fresh each run
+    record_video: false
+    trace: false
+  access: player                     # player | developer (developer adds the evaluate tool)
+  clock: allowed                     # allowed | off (the agent may pause and advance game time)
+  context:
+    refresh_at: 0.6                  # refresh the context at this fraction of the model's window
+    keep_images: 3                   # screenshots kept in context; all are kept on disk
+  limits:                            # hard stops; null = no limit
+    runs: 10
+    hours: 48
+    cost_usd: 50
+    turns_per_run: null
+  notify:
+    # Run with $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_EVENT $GAMER_CAMPAIGN set. macOS example:
+    # command: osascript -e 'display notification (system attribute "GAMER_MESSAGE") with title (system attribute "GAMER_TITLE")'
+    command: null
+    on: [agent, run_end, campaign_end, limit, error]
+  system_prompt_file: null           # replace the built-in framework prompt (keep {{clock}} and {{developer}} placeholders)
+  output: ./runs
+
+campaigns:
+  tome-ui:
+    url: https://darrencroton.github.io/tales-of-middle-earth/
+    browser: { device: "Pixel 7" }
+    instructions: |
+      Test ToME — Tales of Middle-earth as a phone player would. Create a hero and play normally,
+      and look for UI bugs, quirks and anything confusing: layout in portrait and landscape,
+      menus, sheets, cards, the toolbar, the inventory and the character screens.
+      Keep a running log in /run/log.md. Write each finding to /run/findings.md with steps to
+      reproduce, what you expected, what happened and a saved screenshot. Notify me of serious ones.
+      Work for about 6 hours of wall time, starting new runs (new heroes) when it helps.
+
+  drones-score:
+    url: https://simonw.github.io/battledrones/
+    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 3, output: 15 } }
+    limits: { runs: 20, cost_usd: 30 }
+    instructions: |
+      Play a Skirmish on Riverlands against the Normal AI and win as quickly as you can.
+      After each match, record the result, the game time it took and what you would change
+      in /memory, then start a new run and try to beat your best time.
+
+  dodge:
+    url: ./test/fixtures/game.html
+    model: { name: claude-haiku-5-5, price_per_mtok: { input: 1, output: 5 } }
+    limits: { runs: 2, hours: 0.25, cost_usd: 1 }
+    instructions: |
+      This is a small test game. Survive as long as you can and report your best score in /run/report.md.

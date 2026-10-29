@@ -1,9 +1,9 @@
-# game-r — design (draft 0.2)
+# game-r — design (draft 0.3)
 
 An engine where an LLM plays and tests HTML web-app games from a URL, under the
 user's instructions, for hours to days, and learns from run to run.
 
-> Status: design for review. Nothing is built yet.
+> Status: step 1 built (tools, config, workspace, MCP server); step 2 next. See §10.
 
 ---
 
@@ -79,59 +79,19 @@ All user options and directions live in **`game-r.yaml`**. `defaults` apply to
 every campaign; each campaign overrides only what differs. API keys stay in
 environment variables, named in the config, never written into it.
 
-```yaml
-# game-r.yaml
-defaults:
-  model:
-    provider: anthropic              # anthropic | openai-compatible
-    name: claude-opus-5-5
-    base_url: null                   # openai-compatible: OpenAI, Gemini, OpenRouter, Ollama, LM Studio…
-    api_key_env: ANTHROPIC_API_KEY
-    max_output_tokens: 8000
-    reasoning: medium                # passed through where the provider supports it
-    context_window: 200000
-    price_per_mtok: { input: 5, output: 25 }   # used for cost tracking and the cost limit
-  browser:
-    engine: chromium                 # chromium | firefox | webkit
-    headless: true                   # false to watch it play
-    device: desktop                  # or any Playwright device name, e.g. "Pixel 7"
-    viewport: null                   # e.g. [1280, 800]; overrides device
-    profile: campaign                # campaign: in-game saves persist across runs | run: fresh each run
-    record_video: false
-    trace: false
-  access: player                     # player | developer (developer adds the evaluate tool)
-  clock: allowed                     # allowed | off  (agent may pause/advance game time)
-  context:
-    refresh_at: 0.6                  # refresh context at this fraction of the window
-    keep_images: 3                   # older screenshots are dropped from context (kept on disk)
-  limits:                            # hard stops; null = no limit
-    runs: 10
-    hours: 48
-    cost_usd: 50
-    turns_per_run: null
-  notify:
-    command: null                    # zsh command; gets $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_CAMPAIGN
-    on: [agent, run_end, campaign_end, limit, error]
-  system_prompt_file: null           # override the built-in framework prompt
-  output: ./runs
+The commented file in the repository, [`game-r.yaml`](../game-r.yaml), is the
+reference: every option with its default, and three example campaigns (ToME
+UI testing, Battle Drones speed-runs, and a tiny local test game). A campaign
+needs only a `url` (http(s), or a local path relative to the config) and
+`instructions`; everything else is inherited.
 
+```yaml
 campaigns:
   tome-ui:
     url: https://darrencroton.github.io/tales-of-middle-earth/
     browser: { device: "Pixel 7" }
     instructions: |
-      Test ToME as a phone player. Play normally and look for UI bugs, quirks
-      and anything confusing: layout in portrait and landscape, menus, sheets,
-      cards, the toolbar. Write each finding to /run/findings.md with steps to
-      reproduce and a screenshot. Keep going for about 6 hours of wall time.
-
-  drones-score:
-    url: https://simonw.github.io/battledrones/
-    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 3, output: 15 } }
-    limits: { runs: 20, cost_usd: 30 }
-    instructions: |
-      Play Skirmish on Riverlands against the Normal AI. Win as fast as you can.
-      After each match, record the result and time, and what you'd change.
+      Test ToME as a phone player. Play normally and look for UI bugs and quirks …
 ```
 
 Example `notify.command` for macOS:
@@ -155,7 +115,7 @@ string interpolation, so game or model text can't inject shell commands.
 
 ## 5. Tools
 
-Twelve tools, one registry. Results are compact text; screenshots are images.
+Eleven tools (nine always, plus `clock` and `evaluate` when the config allows them), one registry. Results are compact text; screenshots are images.
 Every input-tool result ends with a one-line summary of new console errors, if
 there are any, so the agent notices them without polling.
 
@@ -171,24 +131,33 @@ there are any, so the agent notices them without polling.
 | `browser` | `device?`, `viewport?`, `orientation?`, `restart?` | Change device or orientation mid-run; restart the browser (profile kept). |
 | `evaluate` | `expression` | Run JS in the page. Present only if `access: developer`. |
 
-```ts
-type Target = { ref: string } | { xy: [number, number] } | { cell: string };   // cell = grid label, e.g. "F7"
-type Action =
-  | { click: Target; button?: 'left' | 'right'; count?: number }
-  | { tap: Target } | { long_press: Target; ms?: number }
-  | { drag: { from: Target; to: Target; ms?: number } }
-  | { swipe: { from: Target; dir: 'up' | 'down' | 'left' | 'right'; px?: number } }
-  | { pinch: { at: Target; scale: number } }
-  | { key: string; hold_ms?: number } | { keys: string[] }    // keys = chord
-  | { type: string }
-  | { scroll: { at?: Target; dy: number; dx?: number } }
-  | { wait_ms: number }                                       // advances game time if the clock is paused
-  | { goto: string } | { reload: true } | { back: true };
+Each action is one flat object, `{do, ...}`, which every provider's tool calling handles well:
+
+```jsonc
+{ "do": "click", "at": "e12" }                    // ref from read_page (after a reload refs may look like f1e6)
+{ "do": "tap", "at": "F7" }                       // grid cell from look (upper case)
+{ "do": "click", "at": "320,180", "button": "right", "count": 2 }   // CSS px
+{ "do": "hover" | "long_press", "at": "…", "ms": 800 }
+{ "do": "drag", "at": "…", "to": "…", "ms": 300 }
+{ "do": "swipe", "at": "…", "dir": "up", "distance": 200, "ms": 250 }
+{ "do": "pinch", "at": "…", "scale": 2 }          // two-finger touch, chromium
+{ "do": "key", "key": "ArrowRight", "ms": 500 }   // ms = hold time
+{ "do": "keys", "keys": ["Control", "s"] }        // chord
+{ "do": "type", "text": "Frodo" }
+{ "do": "scroll", "at": "…", "dy": 300 }
+{ "do": "wait", "ms": 250 }                       // game time when the clock is paused
+{ "do": "goto", "url": "…" } · { "do": "reload" } · { "do": "back" }
 ```
+
+On a touch device, drags, swipes and long presses are real touch events
+(Chromium DevTools protocol); elsewhere they fall back to the mouse. A `tap`
+on a device without touch is a click. Dialogs (`alert`, `confirm`, `prompt`)
+are accepted automatically and logged to the console so the agent sees them.
 
 The clock was verified in this environment with Playwright 1.63: paused for
 1.5 s of wall time → 0 frames; `advance 1000` → 63 frames and 10 `setInterval`
-ticks. It does not cover Web Audio, CSS animations or Web Worker timers; the
+ticks. A held key with the clock paused moves the game exactly that much game
+time (tested). It does not cover Web Audio, CSS animations or Web Worker timers; the
 framework prompt tells the agent so, and the agent decides whether pausing
 suits the game and its instructions.
 
@@ -317,20 +286,45 @@ Four runtime dependencies. Nothing gets installed without your go-ahead.
 
 ## 10. Build order
 
-| Step | Delivers | Check |
-|---|---|---|
-| 1 | Config loader, browser tools, `files`, `game-r mcp` | Claude Code plays both example games (local builds) through the tools |
-| 2 | Engine loop, Anthropic adapter, logs, limits, `status`, `end_run`, context refresh | A 2-hour unattended run with flat per-turn tokens |
-| 3 | OpenAI-compatible adapter, `notify`, `resume`, `stop`, video/trace | The same campaign with a second provider; a killed run resumes |
-| 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory |
+| Step | Delivers | Check | Status |
+|---|---|---|---|
+| 1 | Config loader, browser tools, `files`, `status`, `notify`, `end_run`, workspace, `game-r mcp` | Tests against a fixture game; an agent plays through the tools; both example games through MCP | **Built.** 20 tests pass; played the fixture turn by turn on paused time. Example games pending network access to `*.github.io` (building them locally was blocked here) |
+| 2 | Engine loop (`game-r run`), Anthropic adapter, context refresh, image pruning, usage and cost, limits | A 2-hour unattended run with flat per-turn tokens | Next |
+| 3 | OpenAI-compatible adapter, `resume`, `stop` | The same campaign with a second provider; a killed run resumes | |
+| 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory | |
 
-## 11. Later (not v1)
+## 11. Future work
 
+Not in v1, kept for later iterations once real campaigns show where the agent
+needs help. Each should earn its place by measured improvement.
+
+**Steering and visibility**
 - Steering a running campaign (e.g. an `inbox.md` the engine passes to the agent when it changes).
-- A small live dashboard.
-- Deterministic replay of a run from its transcript (seeded `Math.random` + clock).
+- A small live dashboard (status, latest screenshot, findings, run timeline).
+
+**Supporting roles (from draft 0.1)**
+- *Auditor*: a cheaper model that periodically checks progress against the instructions and can ask for a replan.
+- *Archivist*: curates /memory (prunes, merges, checks entries against recent evidence).
+- *Reflector*: a dedicated post-mortem at run end that proposes lessons and the next run's focus.
+- *Verifier*: re-runs a reported bug to confirm it before it is reported.
+
+**Measurement and guards**
+- Stall detection (state fingerprints, unchanged frames, repeated action patterns) surfaced to the agent as alerts.
+- Goal tracking tied to the instructions (goals that cite an objective).
+- Lesson utility scoring: lessons carry evidence and a score updated from run outcomes.
+- Coverage tracking: a map of screens and states reached, to steer exploration.
+
+**Testing pipeline**
+- Deterministic oracles (layout overflow, tap-target size, heap growth, frame timing, accessibility via axe-core).
+- Findings pipeline: de-duplicate, verify by replay, classify.
+- Deterministic replay of a run from its transcript (seeded `Math.random` + clock + logged inputs).
+- Automatic shortening of reproduction steps (delta debugging).
+
+**Games and scale**
+- Optional game adapters (structured state, score, legal actions), e.g. wrapping ToME's `window.__tome` or Battle Drones' arena seat API, when a game benefits and the user wants it; and adapter bootstrapping by the agent.
+- Reflex controllers: agent-written in-page scripts for twitch mechanics.
 - Parallel runs within one campaign sharing memory.
-- Optional game hints/adapters, if a game benefits and the user wants them.
+- Model-vs-model comparison reports.
 
 ---
 
