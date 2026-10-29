@@ -11,7 +11,7 @@ defaults:
     max_output_tokens: 16000
     reasoning: medium                # off | low | medium | high | max (passed through where supported)
     context_window: 200000
-    price_per_mtok: { input: 5, output: 25 }   # USD per million tokens; used for cost and limits.cost_usd
+    price_per_mtok: { input: 4, output: 20 }   # USD per million tokens (Opus 5.5); used for cost and limits.cost_usd
   browser:
     engine: chromium                 # chromium | firefox | webkit
     headless: true                   # false to watch it play
@@ -52,7 +52,7 @@ campaigns:
 
   drones-score:
     url: https://simonw.github.io/battledrones/
-    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 3, output: 15 } }
+    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 2, output: 10 } }
     limits: { runs: 20, cost_usd: 30 }
     instructions: |
       Play a Skirmish on Riverlands against the Normal AI and win as quickly as you can.
@@ -61,7 +61,7 @@ campaigns:
 
   dodge:
     url: ./test/fixtures/game.html
-    model: { name: claude-haiku-5-5, price_per_mtok: { input: 1, output: 5 } }
+    model: { name: claude-haiku-5-5, price_per_mtok: { input: 0.1, output: 0.5 } }
     limits: { runs: 2, hours: 0.25, cost_usd: 1 }
     instructions: |
       This is a small test game. Survive as long as you can and report your best score in /run/report.md.
