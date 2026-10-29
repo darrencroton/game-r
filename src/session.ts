@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Config, NotifyEventName } from './config.ts';
+import type { TokenUsage } from './model.ts';
 import { GameBrowser } from './browser.ts';
 import { Files } from './files.ts';
 import { Workspace } from './workspace.ts';
@@ -19,7 +20,7 @@ export class Session {
   readonly workspace: Workspace;
   readonly browser: GameBrowser;
   readonly files: Files;
-  state: 'running' | 'done' = 'running';
+  state: 'running' | 'done' | 'stopped' = 'running';
   doneReason = '';
   usage: Usage = { turns: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
   turnsThisRun = 0;
@@ -65,6 +66,14 @@ export class Session {
     const limit = this.limitReached(true);
     if (limit) await this.finish(limit);
     else await this.startRun();
+  }
+
+  addUsage(tokens: TokenUsage, costUsd: number): void {
+    this.usage.turns += 1;
+    this.turnsThisRun += 1;
+    this.usage.input_tokens += tokens.input + tokens.cache_read + tokens.cache_write;
+    this.usage.output_tokens += tokens.output;
+    this.usage.cost_usd += costUsd;
   }
 
   get elapsedMs(): number {
@@ -167,6 +176,7 @@ export class Session {
   }
 
   async close(): Promise<void> {
+    if (this.state === 'running') this.state = 'stopped';
     await this.saveStatus().catch(() => {});
     await this.browser.close();
     await this.workspace.close();

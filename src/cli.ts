@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { stringify } from 'yaml';
 import { ConfigError, listCampaigns, loadConfig } from './config.ts';
+import { runCampaign } from './engine.ts';
+import { FatalModelError } from './model.ts';
 import { serveMcp } from './mcp.ts';
 
 const USAGE = `game-r — LLMs play and test web games
@@ -11,6 +13,9 @@ const USAGE = `game-r — LLMs play and test web games
 Usage: game-r <command> [campaign] [--config game-r.yaml]
 
 Commands:
+  run <campaign>      Run a campaign with its configured model until it is done or a limit is reached
+                      (running it again continues the campaign with a new run)
+  stop <campaign>     Ask a running campaign to stop at the end of its current turn
   mcp <campaign>      Serve the game tools over MCP (stdio) for Claude Code or another client
   status [campaign]   Show the status of one campaign, or of every campaign in the config
   config <campaign>   Print a campaign's resolved configuration
@@ -54,6 +59,20 @@ async function main(): Promise<void> {
     return name;
   };
   switch (command) {
+    case 'run': {
+      const reason = await runCampaign(await loadConfig(configFile, needName()));
+      console.error(`game-r: campaign ended: ${reason}`);
+      return;
+    }
+    case 'stop': {
+      const config = await loadConfig(configFile, needName());
+      const dir = path.join(config.output, config.name);
+      await writeFile(path.join(dir, 'stop.request'), new Date().toISOString()).catch(() => {
+        throw new ConfigError(`"${config.name}" has not been started.`);
+      });
+      console.log(`Asked "${config.name}" to stop after its current turn.`);
+      return;
+    }
     case 'mcp':
       await serveMcp(await loadConfig(configFile, needName()), await version());
       return;
@@ -72,6 +91,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err instanceof ConfigError ? err.message : (err as Error).stack ?? String(err));
+  console.error(err instanceof ConfigError || err instanceof FatalModelError ? `game-r: ${err.message}` : ((err as Error).stack ?? String(err)));
   process.exit(1);
 });

@@ -9,9 +9,16 @@ const ModelSchema = z.object({
   base_url: z.string().nullable().default(null),
   api_key_env: z.string().nullable().default('ANTHROPIC_API_KEY'),
   max_output_tokens: z.number().int().positive().default(16000),
-  reasoning: z.enum(['off', 'low', 'medium', 'high', 'max']).default('medium'),
-  context_window: z.number().int().positive().default(200000),
-  price_per_mtok: z.object({ input: z.number().nonnegative(), output: z.number().nonnegative() }).nullable().default(null),
+  reasoning: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+  price_per_mtok: z
+    .object({
+      input: z.number().nonnegative(),
+      output: z.number().nonnegative(),
+      cache_read: z.number().nonnegative().optional(),
+      cache_write: z.number().nonnegative().optional(),
+    })
+    .nullable()
+    .default(null),
 });
 
 const BrowserSchema = z.object({
@@ -25,8 +32,7 @@ const BrowserSchema = z.object({
 });
 
 const ContextSchema = z.object({
-  refresh_at: z.number().gt(0).lt(1).default(0.6),
-  keep_images: z.number().int().nonnegative().default(3),
+  refresh_tokens: z.number().int().positive().default(200_000),
 });
 
 const LimitsSchema = z.object({

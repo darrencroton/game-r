@@ -265,7 +265,7 @@ export function createTools(session: Session): Tool[] {
       'Every screenshot is also kept under /run/shots.',
     input: z.object({
       grid: z.union([z.boolean(), z.number().int().min(16).max(400)]).optional(),
-      region: z.tuple([z.number(), z.number(), z.number().positive(), z.number().positive()]).optional(),
+      region: z.array(z.number()).length(4).optional().describe('[x, y, width, height] in CSS px'),
       save_as: z.string().optional(),
     }),
     async run({ grid, region, save_as }) {
@@ -390,7 +390,7 @@ export function createTools(session: Session): Tool[] {
     input: z.object({
       device: z.string().optional().describe('"desktop" or a Playwright device name, e.g. "Pixel 7", "iPhone 15", "iPad Pro 11".'),
       orientation: z.enum(['portrait', 'landscape']).optional(),
-      viewport: z.tuple([z.number().int().positive(), z.number().int().positive()]).nullable().optional().describe('[width, height] in CSS px; null returns to the device default.'),
+      viewport: z.array(z.number().int().positive()).length(2).nullable().optional().describe('[width, height] in CSS px; null returns to the device default.'),
       restart: z.boolean().optional(),
     }),
     async run({ device, orientation, viewport, restart }) {
@@ -441,7 +441,7 @@ export function createTools(session: Session): Tool[] {
     input: z.object({
       command: z.enum(['view', 'create', 'str_replace', 'insert', 'delete', 'rename']),
       path: z.string().optional(),
-      view_range: z.tuple([z.number().int(), z.number().int()]).optional(),
+      view_range: z.array(z.number().int()).length(2).optional().describe('[first line, last line]; -1 for the end'),
       file_text: z.string().optional(),
       old_str: z.string().optional(),
       new_str: z.string().optional(),
@@ -484,7 +484,8 @@ export function createTools(session: Session): Tool[] {
       if (session.mode === 'engine') {
         lines.push(
           `Turns: ${session.turnsThisRun} this run (${left(session.turnsThisRun, limits.turns_per_run, String)}) · ${u.turns} in total`,
-          `Tokens: ${u.input_tokens.toLocaleString()} in, ${u.output_tokens.toLocaleString()} out · cost $${u.cost_usd.toFixed(2)} (${left(u.cost_usd, limits.cost_usd, (n) => `$${n.toFixed(2)}`)})`,
+          `Tokens: ${u.input_tokens.toLocaleString()} in, ${u.output_tokens.toLocaleString()} out · ` +
+            (config.model.price_per_mtok ? `cost $${u.cost_usd.toFixed(2)} (${left(u.cost_usd, limits.cost_usd, (n) => `$${n.toFixed(2)}`)})` : 'cost not tracked (no model.price_per_mtok)'),
         );
       } else lines.push('Turns, tokens and cost are not tracked when playing through MCP.');
       if (config.clock === 'allowed' && session.state === 'running') lines.push(`Clock: ${browser.paused ? 'paused' : 'running'} · game time ${seconds(await browser.gameTime())}`);

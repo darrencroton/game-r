@@ -9,9 +9,10 @@ defaults:
     base_url: null                   # openai-compatible: e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1
     api_key_env: ANTHROPIC_API_KEY
     max_output_tokens: 16000
-    reasoning: medium                # off | low | medium | high | max (passed through where supported)
-    context_window: 200000
-    price_per_mtok: { input: 4, output: 20 }   # USD per million tokens (Opus 5.5); used for cost and limits.cost_usd
+    reasoning: medium                # off | low | medium | high | xhigh | max (mapped to what the provider supports)
+    # USD per million tokens (Opus 5.5); used for cost and limits.cost_usd.
+    # cache_read / cache_write default to 0.1× and 1.25× input when not given.
+    price_per_mtok: { input: 4, output: 20, cache_read: 0.2 }
   browser:
     engine: chromium                 # chromium | firefox | webkit
     headless: true                   # false to watch it play
@@ -23,8 +24,7 @@ defaults:
   access: player                     # player | developer (developer adds the evaluate tool)
   clock: allowed                     # allowed | off (the agent may pause and advance game time)
   context:
-    refresh_at: 0.6                  # refresh the context at this fraction of the model's window
-    keep_images: 3                   # screenshots kept in context; all are kept on disk
+    refresh_tokens: 200000           # start a fresh context (from /memory) once a request reaches this many input tokens
   limits:                            # hard stops; null = no limit
     runs: 10
     hours: 48
@@ -52,7 +52,7 @@ campaigns:
 
   drones-score:
     url: https://simonw.github.io/battledrones/
-    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 2, output: 10 } }
+    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 2, output: 10, cache_read: 0.2 } }
     limits: { runs: 20, cost_usd: 30 }
     instructions: |
       Play a Skirmish on Riverlands against the Normal AI and win as quickly as you can.
