@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -218,6 +218,25 @@ describe('access and clock settings', () => {
       assert.match(textOf(ended), /campaign is over: limit nearly reached \(\S+ left\): no new run in the wrap-up window/);
     } finally {
       await session.close();
+    }
+  });
+
+  test('a sealed run keeps only the screenshots a file names, unless keep_shots is all', async () => {
+    for (const keep of ['referenced', 'all'] as const) {
+      const session = await Session.open(await makeConfig({ browser: { keep_shots: keep } }), 'mcp');
+      try {
+        const box = new Toolbox(session);
+        await session.begin();
+        for (let i = 0; i < 3; i += 1) await box.call('look', {});
+        await box.call('files', { command: 'create', path: '/run/findings.md', file_text: 'Overlap: /run/shots/0002.jpg' });
+        await box.call('files', { command: 'create', path: '/memory/notes.md', file_text: 'Goal ticked (/runs/run-001/shots/0003.jpg).' });
+        await box.call('end_run', { summary: 'Looked.', next: 'new_run' });
+        const shots = (await readdir(path.join(session.workspace.dir, 'run-001', 'shots'))).sort();
+        assert.deepEqual(shots, keep === 'all' ? ['0001.jpg', '0002.jpg', '0003.jpg'] : ['0002.jpg', '0003.jpg']);
+        await stat(path.join(session.workspace.dir, 'run-001', 'live.jpg'));
+      } finally {
+        await session.close();
+      }
     }
   });
 

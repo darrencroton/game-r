@@ -35,6 +35,7 @@ const BrowserSchema = z.object({
   profile: z.enum(['campaign', 'run']).default('campaign'),
   record_video: z.boolean().default(false),
   trace: z.boolean().default(false),
+  keep_shots: z.enum(['referenced', 'all']).default('referenced'),
 });
 
 const ContextSchema = z.object({

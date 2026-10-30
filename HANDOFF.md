@@ -18,7 +18,7 @@ Work now happens locally on the user's Mac (from 2026-10-30), on `main`.
 
 ## Where things stand
 
-On `main`. 45 tests pass (`npm test`, about 15–30 s); typecheck clean.
+On `main`. 47 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 | Part | State |
 |---|---|
@@ -57,7 +57,7 @@ Not critical for a first release: the Anthropic API provider, live steering, a d
 
 1. **Fix what the long run showed** (with the user; see *The long run* below):
    - **Context growth in agent CLI sessions** (agreed; options for Claude Code, Codex and OpenCode being investigated): `context.refresh_tokens` applies only to game-r's own API loop. Claude Code never compacted, so a long run's cost per call doubled.
-   - **Screenshot retention** (agreed; being built): screenshots are 96% of a run folder, and no ToME report has cited one.
+   - ~~**Screenshot retention**~~ **Done:** `browser.keep_shots` (default `referenced`): at each seal, only the screenshots a run file or /memory names are kept; `all` keeps every one; an interrupted run keeps them all.
    - Instructions stay as they are: the user liked the creative Word of Recall route.
 2. **R1, the rest:** a run that reaches its hours limit (the wrap-up warning and the stop), ideally with a CLI resume.
 3. **R4**: a short Battle Drones campaign (real-time; pause the clock), to check the protocol on a second game.
@@ -111,7 +111,7 @@ Campaign `tome-barrow-long`: Claude Code on Sonnet, high effort, Pixel 7, headed
 **Proposals:**
 
 1. **Cap context in agent CLI sessions.** Either use each CLI's own compaction setting, if it has one (Codex's `model_auto_compact_token_limit`; Claude Code's is to be probed), or have game-r end the session after a set number of calls in a run and continue with the existing *refresh* opening. Probe first.
-2. **Screenshot retention:** a `game-r.yaml` option (e.g. `keep_shots: referenced | all`, default `referenced`). At each seal, keep the screenshots that `/run` files, `log.md` or `/memory` name, and drop the rest. `all` is for debugging what the agent saw.
+2. **Screenshot retention:** done, as `browser.keep_shots: referenced | all` (default `referenced`). At each seal it keeps the screenshots that a text file in the run folder (bar the transcript) or `/memory` names, and drops the rest; `all` is for debugging what the agent saw.
 3. ~~**Instructions**: whether the first descent must be on foot, and "touch only".~~ Declined: the user liked the creative solution.
 
 ---

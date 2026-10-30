@@ -266,6 +266,7 @@ runs/<campaign>/
     log.md             the run's timeline: `log` entries plus framework events, all stamped
     memory/            framework: a copy of /memory as the run ended
     transcript.jsonl · shots/ · live.jpg · video/ · trace.zip
+                       shots/: at the seal, only the screenshots a run file or /memory names are kept (browser.keep_shots)
   config.yaml · campaign.lock · status.json · stop.request · profile/
 ```
 

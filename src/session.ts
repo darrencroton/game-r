@@ -21,7 +21,7 @@ const NO_USAGE: Usage = { turns: 0, input_tokens: 0, output_tokens: 0, cost_usd:
 
 /** Local wall-clock time with its zone, e.g. "14:02:07 GMT+11". */
 export function clockTime(date = new Date()): string {
-  return date.toLocaleTimeString(undefined, { hour12: false, timeZoneName: 'short' });
+  return date.toLocaleTimeString(undefined, { hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
 }
 
 /** A short duration, e.g. "3m24s" or "1h05m". */
@@ -187,6 +187,7 @@ export class Session {
     await this.timeline(`Run ${this.run} ended (${endedBy}${next ? `, next: ${next}` : ''})${summary ? `: ${summary}` : ''}`);
     await this.saveRun();
     await this.workspace.snapshotMemory(this.run).catch((err: Error) => this.workspace.log({ type: 'snapshot_failed', message: err.message }));
+    if (this.config.browser.keep_shots === 'referenced') await this.workspace.pruneShots().catch((err: Error) => this.workspace.log({ type: 'prune_failed', message: err.message }));
   }
 
   /** Seals this run. The next one starts when the driver begins it. Returns why the campaign ended, if it did. */

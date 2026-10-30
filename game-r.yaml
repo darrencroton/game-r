@@ -33,6 +33,8 @@ defaults:
     profile: campaign                # campaign: saved game data persists across runs | run: fresh each run
     record_video: false
     trace: false
+    keep_shots: referenced           # referenced: when a run ends, keep only the screenshots (run-NNN/shots/) that a file in the
+                                     # run folder or /memory names (an interrupted run keeps them all) | all: keep every one
   access: player                     # player | developer (developer adds the evaluate tool)
   clock: allowed                     # allowed | off (the agent may pause and advance game time)
   context:

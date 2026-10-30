@@ -291,7 +291,10 @@ export function createTools(session: Session): Tool[] {
       'Screenshot of the game. Image pixels are CSS pixels, so a point in the image is the "x,y" you can target. ' +
       'grid overlays labelled cells (true = 64 px cells, or a number for the cell size) for aiming at canvas content by cell name. ' +
       'region [x,y,w,h] zooms in at device resolution. save_as copies the image to /run or /memory (e.g. "/run/findings/menu-overlap.jpg"). ' +
-      'Every screenshot is also kept under /run/shots. A "scrollable:" line lists the page or areas on screen with more content beyond their edges.',
+      (config.browser.keep_shots === 'all'
+        ? 'Every screenshot is also kept under /run/shots. '
+        : 'Every screenshot is also saved under /run/shots until the run ends; then only those a /run or /memory file names are kept. ') +
+      'A "scrollable:" line lists the page or areas on screen with more content beyond their edges.',
     input: z.strictObject({
       grid: z.union([z.boolean(), z.number().int().min(16).max(400)]).optional(),
       region: z.array(z.number()).length(4).optional().describe('[x, y, width, height] in CSS px'),

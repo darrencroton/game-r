@@ -130,6 +130,22 @@ export class Workspace {
     await cp(this.memoryDir, dest, { recursive: true });
   }
 
+  /** Deletes the run's screenshots that no text file in the run folder (bar the transcript) or in /memory names. */
+  async pruneShots(): Promise<void> {
+    const shots = path.join(this.runDir, 'shots');
+    const named = new Set<string>();
+    for (const dir of [this.runDir, this.memoryDir]) {
+      for (const name of await readdir(dir, { recursive: true })) {
+        if (!/\.(md|txt|json|csv|html?|ya?ml)$/i.test(name) || name === 'transcript.jsonl') continue;
+        const text = await readFile(path.join(dir, name), 'utf8').catch(() => '');
+        for (const m of text.matchAll(/shots\/(\d+\.jpg)/g)) named.add(m[1]!);
+      }
+    }
+    for (const name of await readdir(shots).catch(() => [])) {
+      if (!named.has(name)) await rm(path.join(shots, name), { force: true });
+    }
+  }
+
   /** "README.md 24 lines · guide.md 140 lines · map.jpg 41 KB" for the top-level files in /memory. */
   async memorySizes(): Promise<string> {
     const parts: string[] = [];
