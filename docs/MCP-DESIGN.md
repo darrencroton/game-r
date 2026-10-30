@@ -1,9 +1,9 @@
-# game-r — design (draft 0.5)
+# game-r — design (draft 0.6)
 
 An engine where an LLM plays and tests HTML web-app games from a URL, under the
 user's instructions, for hours to days, and learns from run to run.
 
-> Status: steps 1–2b built (tools, MCP server, engine, agent CLI players, OpenAI-compatible provider). Next: hand-played tests and first runs on the example games. See §10 and `HANDOFF.md`.
+> Status: steps 1–2b built and run for real on the test game and ToME. Draft 0.6 adds §7, memory, reporting and the run protocol, from what the first ToME run taught (step 3b in §10). See `HANDOFF.md`.
 
 ---
 
@@ -107,6 +107,8 @@ campaigns:
       Test ToME as a phone player. Play normally and look for UI bugs and quirks …
 ```
 
+New in draft 0.6 (§7): `pace.seconds_per_call` (0 = off) and `limits.wrap_up_minutes` (default 5). `limits.turns_per_run` becomes `limits.calls_per_run`, counted in tool calls for every player.
+
 Example `notify.command` for macOS:
 
 ```zsh
@@ -128,18 +130,26 @@ string interpolation, so game or model text can't inject shell commands.
 
 ## 5. Tools
 
-Eleven tools (nine always, plus `clock` and `evaluate` when the config allows them), one registry. Results are compact text; screenshots are images.
+Twelve tools (ten always, plus `clock` and `evaluate` when the config allows them), one registry. Results are compact text; screenshots are images. Inputs are strict: an unknown argument is an error, not silently dropped.
 Every input-tool result ends with a one-line summary of new console errors, if
 there are any, so the agent notices them without polling.
+
+**Every result ends with a status line**, added in one place (`Toolbox.call`), so the agent never has to estimate time:
+
+```
+⏱ 14:02:07 AEDT · run 2 · 3m24s in run · campaign 12m of 15m · game 182.3s paused
+```
+
+It shows local time with its zone, the run, wall time and tool calls used against each limit that is set (`hours`, `cost_usd`, `calls_per_run`), and the game clock when the clock tool is on. The clock lives here only, not in the page line. Browser telemetry is optional: if the browser is closed or the page has crashed, the line still carries the time and limits. The `status` tool returns the same line plus token and cost detail; one function formats both. Warnings are in §7, under *Limits*.
 
 ### Browser
 
 | Tool | Arguments | Does |
 |---|---|---|
 | `look` | `grid?` (overlay labelled cells for canvas aiming), `region?` (zoom), `save_as?` | Screenshot plus URL, title and viewport. `save_as` writes it into the run directory for reports. |
-| `read_page` | `filter?` (`interactive` / `all`), `query?` | Accessibility/DOM text snapshot with element refs (`[e12] button "Explore"`). |
+| `read_page` | `boxes?`, `find?`, `depth?`, `url?` | Accessibility snapshot with element refs (`button "Explore" [ref=e12]`). With `url`, reads a documentation page in a short-lived headless browser of its own (about 2 s), so it doesn't share the game's clock, storage or console. It returns the page's plain text (capped; `find` filters it), then closes. A probe found plain text more faithful than a snapshot here: GitHub's file view hides the file's lines from the accessibility tree. |
 | `act` | `actions: Action[]`, `look_after?` | Runs a batch of inputs in order; stops at the first failure; returns `ok`/reason per action. |
-| `console` | `since?` (`last` / `start`), `level?` | Console messages, page errors and failed network requests. |
+| `console` | `all?`, `problems_only?` | Console messages, page errors and failed network requests. |
 | `clock` | `pause` / `resume` / `advance {ms}` / `status` | Controls the page's game time (`requestAnimationFrame`, timers, `performance.now()`). Present only if `clock: allowed`. |
 | `browser` | `device?`, `viewport?`, `orientation?`, `restart?` | Change device or orientation mid-run; restart the browser (profile kept). |
 | `evaluate` | `expression` | Run JS in the page. Present only if `access: developer`. |
@@ -178,15 +188,16 @@ suits the game and its instructions.
 
 | Tool | Arguments | Does |
 |---|---|---|
-| `files` | `view` / `create` / `str_replace` / `insert` / `delete` / `rename` | File access with the same commands as Anthropic's memory tool, confined to three roots: `/memory` (read-write, kept across runs), `/run` (read-write, this run), `/runs` (read-only, earlier runs of this campaign). |
+| `files` | `view` / `create` / `str_replace` / `insert` / `delete` / `rename` | File access with the same commands as Anthropic's memory tool, confined to three roots: `/memory` (read-write, kept across runs), `/run` (read-write, this run), `/runs` (read-only, earlier runs of this campaign). Listings show each file's last change. |
+| `log` | `text` | Appends `- 14:02:07 (+3m24s) <text>` to `/run/log.md`. That file is the run's one timeline: the framework adds run start, warnings, notifications and run end to it, and the agent can't edit it directly. |
 
 ### Run
 
 | Tool | Arguments | Does |
 |---|---|---|
-| `status` | — | Wall time elapsed, run number, turns, tokens, cost, and each limit with what remains. |
+| `status` | — | The status line, plus tokens and cost. |
 | `notify` | `title`, `message`, `level` (`info`/`finding`/`milestone`/`problem`) | Sends a notification through `notify.command`. |
-| `end_run` | `summary`, `next` (`new_run` / `done`) | Ends this run. `new_run` starts the next one (within limits); `done` ends the campaign. |
+| `end_run` | `summary` (one or two sentences), `next` (`new_run` / `goal_met` / `goal_impossible`) | Seals this run (§7). `new_run` asks for another run within the limits; the other two end the campaign and say why. There is no bare "done": the first ToME run ended its campaign with the goal unmet. An agent CLI is told to end its turn; the next run starts in a fresh session. |
 
 ---
 
@@ -204,10 +215,10 @@ loop until the campaign is done, a limit is hit, or a stop is requested:
   count tokens and cost; log the reply
   no tool calls → nudge ("carry on, act through the tools"); 3 in a row ends the campaign
   run the tool calls in order (the browser is stateful); log each one
-  end_run started a new run → new conversation (run opening)
-  turns_per_run reached → end the run (warned one turn earlier)
+  calls_per_run reached → seal the run; next run as above (the status line warned 10 calls ahead)
+  end_run sealed the run → the next run starts with a new conversation (run opening)
   refresh was announced last turn → new conversation (refresh opening)
-  context ≥ refresh_tokens → append the results plus "context refreshes after this turn; save to /memory"
+  context ≥ refresh_tokens → append the results plus "context refreshes after this turn: bring README.md's Now up to date"
   otherwise → append the results
 ```
 
@@ -216,9 +227,7 @@ loop until the campaign is done, a limit is hit, or a stop is requested:
   user's `instructions`, verbatim. Sent with every request and never edited, so
   the instructions can't scroll out or be summarised away; it is also the
   cacheable prefix.
-- **Openings**: a run opening (run number, the `status` text, earlier runs,
-  "start by reading /memory") or a refresh opening ("still run N, the game is
-  as you left it, read /memory").
+- **Openings**: a run opening (run number, the status line, the ledger of earlier runs, whether /memory is still the template, and the protocol step to start with) or a refresh opening ("still run N, the game is as you left it; do the Start step's reading").
 - **Context size** is bounded by `context.refresh_tokens` (default 200k input
   tokens per request). A refresh is "simple compaction" with the agent as the
   summariser: it saves to /memory, then the next request starts clean. Nothing
@@ -237,30 +246,84 @@ loop until the campaign is done, a limit is hit, or a stop is requested:
 
 ---
 
-## 7. On disk
+## 7. Memory, reporting and the run protocol
 
-```
+The first ToME run (`HANDOFF.md`) showed what an unstructured /memory costs. The agent never read the game's help and went down without armour. It invented clock times, believed 15 minutes had passed after 3.4, and ended the campaign with its goal unmet. Its notes were one file of screen coordinates written two minutes in. The fix is structure, not supervision: **the agent's memory and its reporting are the same few files.** Templates lay them out, a short protocol in the framework prompt keeps them current, and facts that only the framework writes anchor them.
+
+### What lives where
+
+```text
 runs/<campaign>/
-  config.yaml          # resolved config snapshot, written at each start
-  campaign.lock        # pid; stops two processes running one campaign
-  status.json          # state (running/done/stopped), run, turns, tokens, cost, elapsed, last error
-  stop.request         # written by `game-r stop`; the engine stops after the current turn
-  profile/             # browser profile (in-game saves, localStorage, IndexedDB)
-  memory/              # agent-owned, kept across runs
-  run-001/
-    transcript.jsonl   # every model reply and tool call/result (images by file reference)
-    shots/             # every screenshot, numbered
-    live.jpg           # latest screenshot
-    end.json           # the agent's end_run summary
-    video/ trace.zip   # if enabled
-    …                  # whatever the agent writes: report.md, findings.md, log.md
-  run-002/
+  ledger.md            framework: one row per run, regenerated from every run.json
+  memory/              agent: kept across runs; also the user's view of the campaign
+    README.md          start here, one page: Goal (checklist), Now (state + next action), Plan, Files
+    guide.md           the game: purpose, rules and mechanics, controls, strategy, open questions, sources
+    lessons.md         lessons, failed approaches included
+  run-NNN/
+    run.json           framework: times, calls, tokens, cost, how it ended, next, summary (replaces end.json)
+    report.md          agent: Objective (at the start), Outcome (at the end)
+    log.md             the run's timeline: `log` entries plus framework events, all stamped
+    transcript.jsonl · shots/ · live.jpg · video/ · trace.zip
+  config.yaml · campaign.lock · status.json · stop.request · profile/
 ```
 
-Separate campaigns run in parallel, each with its own browser, directory and
-lock. A run is portable: zip the campaign directory and it is all there.
-Elapsed time and usage are cumulative across processes (read back from
-`status.json`), so limits hold across restarts.
+- **Rules live once, in the framework prompt.** The templates (`templates/memory/*.md`, `templates/run/report.md`) hold only headings and one line saying what each section holds. The framework copies the memory templates in only when /memory is empty, so it never fights an agent that has reorganised its files. It creates each run's `report.md` at run start with the run number and start time.
+- **The instructions are the brief and stay fixed** (they are the system prompt). README.md's Goal turns them into a checklist of verifiable criteria. An item is ticked only with evidence: a `/runs/run-NNN/…` path to a screenshot or a log line.
+- **README.md's Now is the only handoff:** the current state and one concrete next action.
+- **Facts are the framework's; judgement is the agent's.** Times, calls, tokens, cost and end reasons go in `run.json`, `ledger.md`, the `log.md` stamps and the status line. `run.json` is written at run start and completed by every controlled exit (`end_run`, `finish`, `close`). A crashed run therefore shows as interrupted, with last-known totals. `log.md` and `run.json` join the files the agent cannot write. The ledger is also put into each run opening, because /runs shows only run folders.
+
+### The run protocol (framework prompt)
+
+1. **Orient.** Before the first consequential choice, and whenever a new system or screen appears, read what the game offers about it: help, tutorial, manual, tooltips, and any documentation the instructions point to (`read_page {url}`). Write what matters in guide.md, and turn the instructions into README.md's Goal on the first run. Keep it proportionate: enough to choose and play well, then learn the rest during play. The run opening says when /memory is still the template.
+2. **Start of each run.** Read README.md, lessons.md and the parts of guide.md the next steps need, check them against the screen, and write the run's Objective in report.md. After a context refresh or compaction, re-read these files rather than rewriting the Objective.
+3. **During the run.**
+   - `log` decisions (with their reasons), milestones and surprises as they happen.
+   - Check guide.md before consequential choices rather than taking defaults.
+   - Record a lesson the moment it is learned.
+   - Keep README.md's Now current at each milestone.
+   - In a real-time game, pause the clock before long memory work.
+4. **End of the run.** Write the Outcome, update guide.md and lessons.md (merge, prune, mark hunches "Unverified:"), tick goals with evidence, and set Now's next action. Then `end_run`.
+   - `goal_met` needs evidence for the whole checklist.
+   - Running out of time or runs is not `goal_impossible`. While the goal is unmet but possible, use `new_run`; the framework's limits decide when to stop.
+
+If the agent is blocked, it notifies the user with what blocks it, what it tried, and what it will do meanwhile. Notes and openings point at these steps by name ("do the End step now") instead of restating them, and tool descriptions say only what each tool does.
+
+### Run boundaries
+
+`end_run` seals the run: `run.json` and `log.md` are completed and the ledger is regenerated. **The next run starts only when the driver begins the next session**: a new CLI session, or a new conversation for API providers. A late call from the old session is refused with "this run has ended; end your turn", so it can't play the next run or write its report. The invocation's usage is added to the sealed run. Reaching `calls_per_run` seals the run in `Toolbox.call` in the same way, for every player. Under `game-r mcp` there is no driver, so the next run starts at the next tool call.
+
+### Limits: warn, then stop
+
+Limits stay hard: `hours: 0.25` means 15 minutes. **The warning is the buffer.** From `limits.wrap_up_minutes` before the time limit, past 90 % of the cost limit, or with 10 calls left of `calls_per_run`, the status line adds `⚠ wrap up: 4m left, do the End step now`. The same warning is written to `log.md` once. Calls are counted live in `Toolbox.call` for every player. An agent CLI's tokens and cost arrive only when its session ends, so the cost warning uses the cost as of the last session (the status line says so). Making sessions end at each `end_run` keeps that current. After the campaign ends, `files`, `log` and `status` keep working, and an agent CLI gets 60 s to finish before it is interrupted. API players stop at once, because their loop ends with the campaign; for them the warning is the buffer. An interrupted session is recorded as "usage unknown", not zero.
+
+### Pacing
+
+`pace.seconds_per_call` (default 0, off) makes the game tools wait until at least that long has passed since the previous paced call. That slows the model too, because it waits for each result. Calls take turns, so parallel calls don't all fire at once. Workspace tools are never paced, so note-taking stays cheap. Pacing trades wall time for a lower burn rate, spreading a subscription's 5-hour allowance or an API budget over more hours of play.
+
+- It is capped below the agent CLIs' 900 s tool timeout.
+- Waits longer than the prompt cache's lifetime (about 5 minutes) turn every call into a cache write.
+- In a real-time game the game keeps running while the agent waits, unless the agent has paused the clock.
+
+### Considered, not adopted
+
+From the user's ai-agent-coder toolkit we keep:
+
+- a fixed brief with an enumerable checklist;
+- "Now" as the handoff, with one concrete next action;
+- curated, pruned lessons with an "Unverified:" mark;
+- evidence for each ticked goal;
+- rules written once;
+- facts derived from data the controller owns.
+
+We do not keep its supervision: signed state, protected paths, per-step assessments, reviewers and stop enforcers. They would second-guess the agent (§1). Also dropped after review:
+
+- a separate wrap-up state with refusals (the warning ahead does the job);
+- a `templates` option (`system_prompt_file` already covers customisation);
+- a Progress section in the report (`log.md` holds it).
+
+### On disk, otherwise
+
+Separate campaigns run in parallel, each with its own browser, directory and lock. A campaign is portable: zip its directory and it is all there. Elapsed time and usage are cumulative across processes (read back from `status.json`), so limits hold across restarts.
 
 ---
 
@@ -297,6 +360,7 @@ Elapsed time and usage are cumulative across processes (read back from
 | 2 | Engine loop (`game-r run`, `stop`), context refresh, usage and cost, limits, OpenAI-compatible provider | Loop tests against a mock model server | **Built** |
 | 2b | Agent CLI players (Claude Code, Codex) over HTTP MCP; OpenCode Go support (headers, `vision`) | Fake-CLI tests; a real Claude Code smoke run | **Built** (34 tests). Claude Code verified for real; Codex and OpenCode Go await access |
 | 3 | Both example games, live | Hand-played tool checks, then short campaigns per provider | Next (see `HANDOFF.md`) |
+| 3b | §7: status line, `log`, templates and protocol, `run.json` and ledger, run boundaries, `read_page {url}`, `end_run` outcomes, wrap-up warnings, `calls_per_run`, pacing | Unit tests; then a 30-minute ToME rerun compared with the first | Next |
 | 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory | |
 | — | Anthropic API provider | — | Deferred: subscriptions cover Claude |
 
@@ -317,7 +381,7 @@ needs help. Each should earn its place by measured improvement.
 
 **Measurement and guards**
 - Stall detection (state fingerprints, unchanged frames, repeated action patterns) surfaced to the agent as alerts.
-- Goal tracking tied to the instructions (goals that cite an objective).
+- Goal tracking tied to the instructions beyond README.md's checklist (§7), if the checklist proves not enough.
 - Lesson utility scoring: lessons carry evidence and a score updated from run outcomes.
 - Coverage tracking: a map of screens and states reached, to steer exploration.
 

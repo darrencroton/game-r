@@ -2,3 +2,4 @@ node_modules/
 runs/
 archive/
 .env
+.orchestrator/
