@@ -387,6 +387,27 @@ needs help. Each should earn its place by measured improvement.
 - *Archivist*: curates /memory (prunes, merges, checks entries against recent evidence).
 - *Reflector*: a dedicated post-mortem at run end that proposes lessons and the next run's focus.
 - *Verifier*: re-runs a reported bug to confirm it before it is reported.
+- *Advisor* (the user's idea, 2026-10-31; to ponder, not yet planned): a second model watches the player and, every X calls (5, 10, 50…), may offer an opinion or a suggestion. The player stays in charge and is free to ignore it. See *The advisor idea* below.
+
+**The advisor idea**
+
+*Why:* a spectator sees what the immersed player misses ("the hint says do that, why don't you?"), much as a code review or a manuscript reader does. In `tome-barrow-long` (2026-10-30), six heroes died looking for the Barrow-downs before the seventh found the way in. Help had already said to walk off the edge of an area, and *Recall depths* lists the Barrow-Downs; a watcher with fresh eyes might have pointed either out sooner.
+
+*How it differs from what §1 and §7 rule out:* it advises and never enforces. It doesn't assess steps, block actions or stop the run. It is closest to the *Auditor* above, but it advises on play, not on progress against the instructions.
+
+*Open questions:*
+
+| Question | Options |
+|---|---|
+| What it sees | The latest screenshot (`live.jpg`), recent transcript calls, `log.md`, the player's /memory, the instructions; read-only `read_page` for the game's docs |
+| Its own notes | None (fresh each time); its own notes file; or the player's /memory only |
+| Cadence | Every X calls; at run end only (a post-mortem, like the *Reflector*); or when the player seems stuck (but that is stall detection, which the user called brittle) |
+| How advice arrives | In the next tool result, as a line like the status line; or in an `inbox.md` (the same channel as human steering above, so an advisor is an automated steering source) |
+| Model | A cheaper model than the player, or the same; a different family may see different things |
+| Cost | One extra model call per X player calls, carrying an image and some context |
+| Risk | Advice that is wrong or game-specific becomes noise; the player may defer to it rather than think |
+
+*Cheapest test before building:* run the same campaign twice, with and without advice, and compare deepest level, deaths per hour and cost per hour. A first version could be a script beside a running campaign that reads its run folder and writes advice into the steering inbox, once that exists. Build it only if the measured difference is clear.
 
 **Measurement and guards**
 - Stall detection (state fingerprints, unchanged frames, repeated action patterns) surfaced to the agent as alerts.

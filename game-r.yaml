@@ -90,8 +90,15 @@ campaigns:
       Goal: create a new hero and take them to the bottom of the Barrow-downs, the first dungeon
       (dungeon level 10, 500 ft), alive. Play as a phone player would, through the game's own UI.
 
-      Getting started: as soon as you are in the game, before doing anything else there, read
-      "How to play" (under the ☰ Menu button) and "Help" (under the More button), and write up what matters.
+      Getting started, in this order:
+      1. Read the game's Help and follow it. It is on the title screen, and in the game under ☰ Menu → Help.
+         Read "Your first adventure" (under Start here) first, then the topics it links to,
+         and write up what matters. Go back to Help whenever you are unsure.
+      2. In Bree, walk into every shop and see what it sells. Then decide what equipment, food, light and
+         healing you need, and buy it.
+      3. Find the Barrow-downs: explore the current map along the path to the west. Explore does not find
+         dungeon entrances on the land, so look for the entrance yourself; stand on it and the toolbar
+         offers to take it.
 
       Deliverables: log depth, character level and hit points at each new dungeon level.
       Notify me when you reach each new dungeon level, and if the hero dies.

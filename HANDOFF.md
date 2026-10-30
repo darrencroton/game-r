@@ -36,7 +36,7 @@ On `main`. 45 tests pass (`npm test`, about 15–30 s); typecheck clean.
 - **Codex** (`gpt-6.1-terra`) and **OpenCode Go** (`deepseek-v4.1-flash`): the test game, then 30-minute ToME campaigns (results below).
 - **The tools by hand** on the test game, the docs reader on GitHub, `ping-me` notifications.
 
-**Not yet verified for real:** any run longer than 30 minutes, a Codex session resume, game-r's API-loop context refresh, Battle Drones. See *Release readiness*.
+**Not yet verified for real:** the hours limit on a long run (the 2.1 h run met its goal first), a CLI session resume, game-r's API-loop context refresh, Battle Drones. See *Release readiness*.
 
 ---
 
@@ -46,7 +46,7 @@ On `main`. 45 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 | # | Gap | Why it is critical | Check |
 |---|---|---|---|
-| R1 | **A long unattended run** (2–6 h, Sonnet high). *Crash part done 2026-10-30:* a `kill -9` mid-run, then a restart, recovered cleanly (see AGENTS.md); two fixes followed (usage pending while a CLI session runs; `status` detects a dead pid) | Every real run so far is 30 min or less. Untested for real: Claude Code's own context compaction inside a long run, cost growth per call, the wrap-up warning and the hours limit, a CLI crash or subscription-limit retry mid-campaign, notifications over hours. A clean run won't show crash or retry paths unless they happen, so also kill game-r itself mid-run and run it again (the run should show as interrupted, the stale lock clear and the campaign carry on), and note disk growth per hour (`shots/`, `transcript.jsonl` have no retention) | A `tome-barrow` run with `hours: 3`, plus one deliberate kill and restart |
+| R1 | **A long unattended run.** *Mostly done 2026-10-30:* the crash check passed, and `tome-barrow-long` played 2.1 h unattended and met its goal (see *The long run* below). It showed two things to fix: context growth in CLI sessions, and screenshot retention | Still not exercised for real: the wrap-up warning and hours limit (the goal was met first), a CLI resume, a CLI crash or subscription-limit retry | Fix the two findings, then a run that reaches its hours limit |
 | R2 | ~~Codex as a player, for real~~ **Done 2026-10-30** | Played the test game and 30 min of ToME; sees images; tokens match ccusage. Still unexercised: a session resume | Watch for a resume in the long run |
 | R3 | ~~OpenCode Go, for real~~ **Done 2026-10-30** | Played the test game and 30 min of ToME through game-r's own loop, with images and `reasoning_content`. Still unexercised: the loop's context refresh (needs a long run) | A long Go run |
 | R4 | **The protocol on a second game** | Only ToME has been played; the protocol must hold for any game and goal | A short Battle Drones (real-time, pause the clock) campaign |
@@ -55,28 +55,64 @@ Not critical for a first release: the Anthropic API provider, live steering, a d
 
 ## Next steps, in order
 
-1. **The long run (R1), in a fresh session.** Everything is ready: campaign `tome-barrow-long` (3 h, Sonnet high, `runs: null`, headed, notifications for milestones, deaths and the end).
-   - **The human, before starting:**
-     - Keep the Mac on power, with the lid open (or closed in clamshell mode with a display). `caffeinate -i` stops idle sleep but not lid-close sleep.
-     - Check Claude subscription headroom with `/usage`. About 3 h of Sonnet at roughly 16 calls/min is roughly $30 API-equivalent. If that's a worry, set `pace.seconds_per_call` (for example 5) on the campaign.
-     - Expect iMessages for each new dungeon level, each death and the end.
-   - **The session:** start it from the repo with: *"Read HANDOFF.md and AGENTS.md, then do the long run (R1) as described in Next steps."*
-   - **What the session does:**
-     1. `caffeinate -i node src/cli.ts run tome-barrow-long` in the background.
-     2. Check it after a few minutes: calls, ledger, `log.md`.
-     3. Leave it alone, checking hourly with `node src/cli.ts status tome-barrow-long` and the ledger.
-     4. Afterwards, analyse:
-        - cost per hour and context growth: per-call input tokens across a long run; Claude Code's compaction, if any shows;
-        - memory over time: snapshots in `run-NNN/memory/`, guide size against lessons size;
-        - the Review runs (5, 10, …): was lessons.md cleaned and guide.md re-distilled?
-        - learning across runs: deepest level and how the agent died;
-        - the wrap-up and the hours limit;
-        - disk growth (`du -sh runs/tome-barrow-long`).
-     5. Record the results here, fix what it shows (through the panel), commit and push.
-2. **R4**: a short Battle Drones campaign (real-time; pause the clock), to check the protocol on a second game.
-3. Then the items still open below, multi-run learning (§10 step 4) and *Future work*, with the user.
+1. **Fix what the long run showed** (with the user; see *The long run* below):
+   - **Context growth in agent CLI sessions** (agreed; options for Claude Code, Codex and OpenCode being investigated): `context.refresh_tokens` applies only to game-r's own API loop. Claude Code never compacted, so a long run's cost per call doubled.
+   - **Screenshot retention** (agreed; being built): screenshots are 96% of a run folder, and no ToME report has cited one.
+   - Instructions stay as they are: the user liked the creative Word of Recall route.
+2. **R1, the rest:** a run that reaches its hours limit (the wrap-up warning and the stop), ideally with a CLI resume.
+3. **R4**: a short Battle Drones campaign (real-time; pause the clock), to check the protocol on a second game.
+4. Then the items still open below, multi-run learning (§10 step 4) and *Future work* (including the user's *Advisor* idea, design §11), with the user.
+
+To run a long campaign: keep the Mac on power, check subscription headroom (`/usage`), and run `caffeinate -i node src/cli.ts run <campaign>` in the background; check it hourly with `node src/cli.ts status <campaign>` and the ledger.
 
 The earlier steps (access checks, hand-played tool tests, the first live campaigns, R2, R3, the crash check) are done; their results are below and in `AGENTS.md`.
+
+---
+
+## The long run (R1), 2026-10-30
+
+Campaign `tome-barrow-long`: Claude Code on Sonnet, high effort, Pixel 7, headed, `runs: null`, `hours: 3`, fresh state. It played the ToME build from PR #24, which has the new searchable Help, and *Explore* no longer leads to dungeon entrances on the land. *Getting started* said to read Help (*Your first adventure* first), visit every shop, then explore west for the Barrow-downs. A first start was stopped after 1 minute for that build and trashed.
+
+**Result: goal met in run 9 after 2.10 h.** Hamfast (Dwarf Unbeliever) reached Barrow-Downs level 10 (500 ft) alive, at character level 6 with 51/59 HP. The campaign took 9 runs (8 deaths), 1,844 tool calls and $38.63, with no tool errors. All 37 notifications were sent (no `notify_failed`).
+
+| Run | Time | Calls | Cost | $/call | Peak context | Outcome |
+|---|---|---|---|---|---|---|
+| 1–6 | 57 min | 915 | $14.00 | ≈ $0.015 | 128k–229k | All died overland before dungeon level 1: Old Forest ×2, world-map ambush ×3, Thieves' Hideout behind Bree's `>` |
+| 7 | 38 min | 486 | $15.13 | $0.031 | **514k** | First Word of Recall from Bree → level 8 at character level 9; died of poison |
+| 8 | 7 min | 115 | $1.66 | $0.014 | 137k | Recalled to level 1 and died to a crow |
+| 9 | 23 min | 328 | $7.84 | $0.024 | 348k | Recalled; levels 1→10 in 23 min; goal met |
+
+**Cost and context** (from Claude Code's session logs in `~/.claude/projects/`):
+
+- $18.4/h overall, against $10.4/h in the 30-minute sample. Speed was about 15 calls a minute.
+- **Claude Code never compacted.** Context grew by about 1.1k tokens per call (mostly screenshots), from 18k at the start to 514k in run 7. Cache reads are about 80% of the cost, so a run's cost grows with the square of its length: run 7 cost twice as much per call as the short runs.
+- A cap at about 200k tokens, as `context.refresh_tokens` gives the API loop, would have cut run 7 by roughly 60% and the campaign by roughly a quarter. game-r doesn't apply it to agent CLIs (`src/agent.ts` starts a new session only per run).
+
+**Memory and learning:**
+
+| Snapshot | guide.md | lessons.md |
+|---|---|---|
+| Run 1 | 40 lines, 3.1 KB | 24 lines, 3.7 KB |
+| Run 4 | 51 lines, 6.3 KB | 52 lines, 11.1 KB |
+| Run 5 (Review) | 41 lines, 4.7 KB | 52 lines, 8.8 KB |
+| Run 9 | 63 lines, 8.6 KB | 100 lines, 20.0 KB |
+
+- **The run 5 Review worked:** it cleaned lessons.md first and shrank both files. The next Review (run 10) never came, so lessons.md doubled after it.
+- **Help:** the agent read *Your first adventure* and seven more topics before creating its hero, and went back to Help in runs 5 and 7. In run 5 it found the *walk off the edge* rule that it had missed.
+- **Learning across runs:** each death became a keyed lesson with a location ("where NOT to go"). Run 7 found *Knowledge → Recall depths* and a discounted Word of Recall. From then on `guide.md` opens with "THE ROUTE THAT WORKS": farm gold in Bree with *No selling* on, buy Word of Recall, read it in Bree.
+- **The overland route was never found.** Run 7 followed the path west from Bree to the Grasslands, decided it wasn't the way, and memory now says the entrance is "not needed". That is legitimate play, but it skips what *Getting started* asked for. The next campaign's instructions should say whether to go on foot.
+- **Phone play:** 457 key presses (arrow keys, Home, PageUp…) against about 2,800 taps or clicks. The agent walked the world map with arrow keys although the instructions said to play as a phone player would. Say "touch only" in the instructions if that matters.
+- In-game initiative: on level 8 it switched *Settings → Dungeon levels* to "New each visit" to get past a level it called sealed.
+
+**Disk:** 111 MB in 2.1 h. Screenshots are 63 MB of the 66 MB in the run folders (about 30 MB/h at this pace); the browser profile is a fixed 47 MB; transcripts are under 1 MB a run. Across all campaigns only 8 references to a saved screenshot exist in reports or memory, all from the `dodge` test games. Each Claude Code session log is 12–45 MB as well, outside `runs/`.
+
+**Not exercised:** the wrap-up warning and the hours limit (the goal was met first), a CLI resume or retry (each run was one session that ended with `end_run`), and a subscription limit.
+
+**Proposals:**
+
+1. **Cap context in agent CLI sessions.** Either use each CLI's own compaction setting, if it has one (Codex's `model_auto_compact_token_limit`; Claude Code's is to be probed), or have game-r end the session after a set number of calls in a run and continue with the existing *refresh* opening. Probe first.
+2. **Screenshot retention:** a `game-r.yaml` option (e.g. `keep_shots: referenced | all`, default `referenced`). At each seal, keep the screenshots that `/run` files, `log.md` or `/memory` name, and drop the rest. `all` is for debugging what the agent saw.
+3. ~~**Instructions**: whether the first descent must be on foot, and "touch only".~~ Declined: the user liked the creative solution.
 
 ---
 
