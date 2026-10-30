@@ -3,6 +3,8 @@ import path from 'node:path';
 import { ENGINE_FILES } from './workspace.ts';
 
 const MAX_VIEW_CHARS = 60_000;
+/** Below the tools' 30k text cap, so the hint to narrow find survives. */
+const MAX_FIND_CHARS = 25_000;
 
 export interface Roots {
   memory: string;
@@ -43,13 +45,20 @@ export class Files {
     return { abs, root, rel };
   }
 
-  async view(p: string, range?: [number, number]): Promise<string> {
+  async view(p: string, range?: [number, number], find?: string): Promise<string> {
     const { abs, root, rel } = this.resolve(p, false);
     const info = await stat(abs).catch(() => null);
     if (!info) throw new FilesError(`${p} does not exist.`);
     if (info.isDirectory()) return this.listing(abs, `/${root}${rel ? '/' + rel : ''}`, root === 'runs' && !rel);
     let text = await readFile(abs, 'utf8');
     const lines = text.split('\n');
+    if (find) {
+      const needle = find.toLowerCase();
+      const hits = lines.flatMap((line, i) => (line.toLowerCase().includes(needle) ? [`${String(i + 1).padStart(6)}\t${line}`] : []));
+      if (!hits.length) return `No lines in ${p} contain "${find}".`;
+      const found = hits.join('\n');
+      return found.length > MAX_FIND_CHARS ? found.slice(0, MAX_FIND_CHARS) + `\n… truncated: ${hits.length} matching lines; narrow find.` : found;
+    }
     const [from, to] = range ?? [1, lines.length];
     const start = Math.max(1, from);
     const end = to === -1 ? lines.length : Math.min(lines.length, to);

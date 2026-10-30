@@ -68,7 +68,7 @@ describe('engine loop', () => {
       const [first, second] = mock.requests;
       assert.equal(first.model, 'mock');
       assert.equal(first.max_tokens, 16000);
-      assert.equal(first.reasoning_effort, 'medium');
+      assert.equal(first.reasoning_effort, 'high');
       assert.match(first.messages[0].content, /You are playing and testing a web game[\s\S]*Play the game\./);
       assert.match(lastUserText(first), /Run 1 has started[\s\S]*⏱ [\s\S]*first run of the campaign[\s\S]*Orient first/);
       assert.deepEqual(first.tools.map((t: any) => t.function.name), ['look', 'read_page', 'act', 'console', 'clock', 'browser', 'files', 'status', 'log', 'notify', 'end_run']);

@@ -177,6 +177,7 @@ export class Session {
     await this.workspace.log({ type: 'run_end', ended_by: endedBy, next, summary });
     await this.timeline(`Run ${this.run} ended (${endedBy}${next ? `, next: ${next}` : ''})${summary ? `: ${summary}` : ''}`);
     await this.saveRun();
+    await this.workspace.snapshotMemory(this.run).catch((err: Error) => this.workspace.log({ type: 'snapshot_failed', message: err.message }));
   }
 
   /** Seals this run. The next one starts when the driver begins it. Returns why the campaign ended, if it did. */

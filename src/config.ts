@@ -14,7 +14,7 @@ const ModelSchema = z.object({
   secrets_file: z.string().nullable().default('./.env'),
   headers: z.record(z.string(), z.string()).default({}),
   max_output_tokens: z.number().int().positive().default(16000),
-  reasoning: z.string().default('medium'),
+  reasoning: z.string().default('high'),
   vision: z.boolean().default(true),
   price_per_mtok: z
     .object({
@@ -107,7 +107,7 @@ function formatIssues(error: z.ZodError): string {
 export function parseConfigText(text: string, source: string): z.infer<typeof FileSchema> {
   let raw: unknown;
   try {
-    raw = parse(text) ?? {};
+    raw = parse(text, { merge: true }) ?? {};
   } catch (err) {
     throw new ConfigError(`${source}: invalid YAML: ${(err as Error).message}`);
   }

@@ -18,11 +18,11 @@ Work now happens locally on the user's Mac (from 2026-10-30), on `main`.
 
 ## Where things stand
 
-On `main`. 41 tests pass (`npm test`, about 15–30 s); typecheck clean.
+On `main`. 45 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 | Part | State |
 |---|---|
-| Config (`game-r.yaml`) | Done. Defaults: Claude Code on Sonnet, high effort (the benchmark). Campaigns: `tome-ui`, `tome-barrow`, `drones-score` (Codex), and `dodge`, `dodge-codex`, `dodge-go` on the local test game |
+| Config (`game-r.yaml`) | Done. Defaults: Claude Code on Sonnet, high effort (the benchmark). Campaigns: `tome-barrow` (and `-codex`, `-go`), `tome-ui`, `tome-barrow`, `drones-score` (Codex), and `dodge`, `dodge-codex`, `dodge-go` on the local test game |
 | Tools, workspace, session | Done: look, read_page (also docs by URL), act, console, clock, browser, evaluate (developer), files, status, log, notify, end_run; status line on every result |
 | Memory and reporting (design §7) | Done: templates, run protocol, report.md, stamped log.md, run.json, ledger.md, end_run outcomes, run sealing, wrap-up warnings, calls_per_run, pacing |
 | `game-r mcp` (stdio) | Done, tested with the MCP client SDK |
@@ -32,10 +32,11 @@ On `main`. 41 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 **Verified for real (locally, 2026-10-30):**
 
-- **Claude Code:** three real ToME campaigns (Opus): 15-minute sample, a 30-minute 3-run rerun after design step 3b (results below), and the test game on Haiku earlier in the cloud.
+- **Claude Code:** ToME campaigns on Opus (a 15-minute sample, a 30-minute rerun) and on Sonnet high (30 minutes, 21 runs); the test game on Haiku earlier in the cloud.
+- **Codex** (`gpt-6.1-terra`) and **OpenCode Go** (`deepseek-v4.1-flash`): the test game, then 30-minute ToME campaigns (results below).
 - **The tools by hand** on the test game, the docs reader on GitHub, `ping-me` notifications.
 
-**Not yet verified for real:** Codex as a player (installed and signed in, never run through game-r), OpenCode Go (key pending), any run longer than 30 minutes, Battle Drones. See *Release readiness*.
+**Not yet verified for real:** any run longer than 30 minutes, a Codex session resume, game-r's API-loop context refresh, Battle Drones. See *Release readiness*.
 
 ---
 
@@ -46,8 +47,8 @@ On `main`. 41 tests pass (`npm test`, about 15–30 s); typecheck clean.
 | # | Gap | Why it is critical | Check |
 |---|---|---|---|
 | R1 | **A long unattended run** (2–6 h, Sonnet high) | Every real run so far is 30 min or less. Untested for real: Claude Code's own context compaction inside a long run, cost growth per call, the wrap-up warning and the hours limit, a CLI crash or subscription-limit retry mid-campaign, notifications over hours. A clean run won't show crash or retry paths unless they happen, so also kill game-r itself mid-run and run it again (the run should show as interrupted, the stale lock clear and the campaign carry on), and note disk growth per hour (`shots/`, `transcript.jsonl` have no retention) | A `tome-barrow` run with `hours: 3`, plus one deliberate kill and restart |
-| R2 | **Codex as a player, for real** | It is one of the user's two subscriptions and has only been tested against a fake CLI (flags from the source, now codex 0.163.0) | `node src/cli.ts run dodge-codex` (tiny); then a short ToME run |
-| R3 | **OpenCode Go, for real** | The third player, also never run for real; with it, game-r's own API loop, its context refresh and its end-of-run path have never run for real | Key in `.env`; `node src/cli.ts run dodge-go` |
+| R2 | ~~Codex as a player, for real~~ **Done 2026-10-30** | Played the test game and 30 min of ToME; sees images; tokens match ccusage. Still unexercised: a session resume | Watch for a resume in the long run |
+| R3 | ~~OpenCode Go, for real~~ **Done 2026-10-30** | Played the test game and 30 min of ToME through game-r's own loop, with images and `reasoning_content`. Still unexercised: the loop's context refresh (needs a long run) | A long Go run |
 | R4 | **The protocol on a second game** | Only ToME has been played; the protocol must hold for any game and goal | A short Battle Drones (real-time, pause the clock) campaign |
 
 Not critical for a first release: the Anthropic API provider, live steering, a dashboard, the *Future work* list.
@@ -55,8 +56,8 @@ Not critical for a first release: the Anthropic API provider, live steering, a d
 ## Next steps, in order
 
 1. **Third `tome-barrow` run**: done (above). Next ToME sample: longer (1–3 h), to see learning past the opening and to cover R1.
-2. **R2 and R3**: the tiny provider checks above; fix the flags where reality differs.
-3. **R1**: a long run, once 1–2 look right.
+2. **R2 and R3**: done (see above).
+3. **R1**: a long run (2–3 h, Sonnet high) on a fresh `tome-barrow-long` campaign, with one deliberate kill and restart.
 4. **R4**: Battle Drones.
 5. Then the items still open below, multi-run learning (§10 step 4) and *Future work*, with the user.
 
@@ -127,6 +128,27 @@ Address these together with the issues and lessons from the first `tome-barrow` 
 **Bug found and fixed:** with `runs: null`, the agent obeyed the wrap-up warning (too little time to play, End step, `new_run`) and the framework started another run every time: 14 empty runs in the last 4 minutes, about $1 of overhead and 14 browser restarts. Now no new run starts while the campaign's time or cost warning is on, once a run has been played.
 
 **What this says:** Sonnet high is a good benchmark. It costs about two-thirds as much per hour, plays faster per call, follows the protocol and the Getting started direction, and learns across runs. The game is hard at level 1 in its default setup; that is game knowledge for the instructions or memory, not the framework.
+
+### The same campaign on Codex and OpenCode Go (2026-10-30, 30 min each, fresh state)
+
+`tome-barrow-codex` (Codex `gpt-6.1-terra`, high) and `tome-barrow-go` (OpenCode Go `deepseek-v4.1-flash`, high) ran side by side, with the same instructions as `tome-barrow`.
+
+| | Sonnet high | Codex `gpt-6.1-terra` high | DeepSeek V4.1 Flash high |
+|---|---|---|---|
+| Cost (API-equivalent) | ≈ $10.4/h | ≈ $4.9/h ($2.03 for 25 min, by ccusage; the ledger shows $0 because the run started before prices were set) | ≈ $0.34/h ($0.16 for 28 min at the list prices) |
+| Speed | 16 calls/min | 18 calls/min | 8 calls/min |
+| Runs, deaths | 7, 6 | 2, 0 | 3, 1 |
+| Best | DL2 alive | DL2 (100 ft) at CL3 alive, saved at the wrap-up to continue | DL1 route found; died in run 1 with its gear unworn |
+| Help read | How to play, Help (skimmed) | How to play, Help and its Newbie Guide | How to play and Help, quoted in the guide |
+| Memory at the end | grew every run | 57 lines in total | 101 lines |
+
+- **R2 and R3 are verified for real.**
+  - Codex sees MCP images, and its shell is off.
+  - The ledger's Codex tokens equal ccusage's per session, so there is no double counting. The resume path is still unexercised, because each run was one session.
+  - OpenCode Go works through game-r's own loop, with images and `reasoning_content`.
+- **Codex played most deliberately.** It ended a run on purpose to restart with better settings, and saved a live hero at the wrap-up warning. The persistent browser profile lets the next run continue that hero.
+- **DeepSeek is very cheap** and documents well, but acts on what it read less reliably.
+- **The wrap-up fix held:** both campaigns ended with "no new run in the wrap-up window".
 
 ---
 

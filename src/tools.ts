@@ -45,6 +45,12 @@ async function pageLine(session: Session): Promise<string> {
   return `${page.url()} · "${await page.title()}" · viewport ${vp?.width}×${vp?.height} css px · ${browser.device}${browser.orientation === 'landscape' ? ' landscape' : ''}${browser.hasTouch ? ' (touch)' : ''}`;
 }
 
+/** "\nscrollable: …" when something on screen can scroll further; never fails the screenshot. */
+async function scrollLine(session: Session): Promise<string> {
+  const hints = await Promise.race([session.browser.scrollHints().catch(() => ''), sleep(1000).then(() => '')]);
+  return hints ? `\n${hints}` : '';
+}
+
 /** The line that ends every result: local time, run, time and calls against the limits, game time, and any wrap-up warning. */
 export async function statusLine(session: Session): Promise<string> {
   const { config, browser } = session;
@@ -285,7 +291,7 @@ export function createTools(session: Session): Tool[] {
       'Screenshot of the game. Image pixels are CSS pixels, so a point in the image is the "x,y" you can target. ' +
       'grid overlays labelled cells (true = 64 px cells, or a number for the cell size) for aiming at canvas content by cell name. ' +
       'region [x,y,w,h] zooms in at device resolution. save_as copies the image to /run or /memory (e.g. "/run/findings/menu-overlap.jpg"). ' +
-      'Every screenshot is also kept under /run/shots.',
+      'Every screenshot is also kept under /run/shots. A "scrollable:" line lists the page or areas on screen with more content beyond their edges.',
     input: z.strictObject({
       grid: z.union([z.boolean(), z.number().int().min(16).max(400)]).optional(),
       region: z.array(z.number()).length(4).optional().describe('[x, y, width, height] in CSS px'),
@@ -294,7 +300,7 @@ export function createTools(session: Session): Tool[] {
     async run({ grid, region, save_as }) {
       const size = grid === true ? 64 : grid || undefined;
       const shot = await image(session, await browser.screenshot({ grid: size, region }));
-      let line = `${await pageLine(session)}${size ? ` · grid ${size}px` : ''}${region ? ` · region ${region.join(',')}` : ''} · ${shot.file}`;
+      let line = `${await pageLine(session)}${size ? ` · grid ${size}px` : ''}${region ? ` · region ${region.join(',')}` : ''} · ${shot.file}${await scrollLine(session)}`;
       if (save_as) {
         const dest = files.resolve(save_as, true).abs;
         await mkdir(path.dirname(dest), { recursive: true });
@@ -366,7 +372,7 @@ export function createTools(session: Session): Tool[] {
         }
       }
       const out: Content[] = [text(lines.join('\n') + consoleSummary(session, since))];
-      if (look_after) out.push(await image(session, await browser.screenshot({})), text(await pageLine(session)));
+      if (look_after) out.push(await image(session, await browser.screenshot({})), text(`${await pageLine(session)}${await scrollLine(session)}`));
       return out;
     },
   });
@@ -469,12 +475,13 @@ export function createTools(session: Session): Tool[] {
     name: 'files',
     description:
       'Your workspace: /memory (kept across runs), /run (this run), /runs (every run of this campaign, read-only). ' +
-      'Commands: view {path, view_range?} (directories list their contents) · create {path, file_text} · ' +
+      'Commands: view {path, view_range?, find?} (directories list their contents; find returns only the lines containing that text) · create {path, file_text} · ' +
       'str_replace {path, old_str, new_str} (old_str must be unique) · insert {path, insert_line, insert_text} · delete {path} · rename {old_path, new_path}.',
     input: z.strictObject({
       command: z.enum(['view', 'create', 'str_replace', 'insert', 'delete', 'rename']),
       path: z.string().optional(),
       view_range: z.array(z.number().int()).length(2).optional().describe('[first line, last line]; -1 for the end'),
+      find: z.string().optional().describe('view: only the lines containing this text (case-insensitive), with their line numbers'),
       file_text: z.string().optional(),
       old_str: z.string().optional(),
       new_str: z.string().optional(),
@@ -486,7 +493,7 @@ export function createTools(session: Session): Tool[] {
     async run(a) {
       switch (a.command) {
         case 'view':
-          return [text(await files.view(need(a.path, 'path'), a.view_range))];
+          return [text(await files.view(need(a.path, 'path'), a.view_range, a.find))];
         case 'create':
           return [text(await files.create(need(a.path, 'path'), need(a.file_text, 'file_text')))];
         case 'str_replace':

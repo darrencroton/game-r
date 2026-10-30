@@ -5,7 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Session } from '../src/session.ts';
 import { Toolbox } from '../src/tools.ts';
-import { makeConfig, textOf } from './helpers.ts';
+import { FIXTURE_URL, makeConfig, textOf } from './helpers.ts';
 
 describe('tools against the fixture game', () => {
   let session: Session;
@@ -157,6 +157,7 @@ describe('tools against the fixture game', () => {
     assert.equal(facts.summary, 'Learned the controls.');
     assert.equal(facts.ended_by, 'end_run');
     assert.equal(facts.memory_updated, true);
+    assert.equal(await readFile(path.join(session.workspace.dir, 'run-001', 'memory', 'notes.md'), 'utf8'), 'Rocks fall every 500 ms.');
     assert.match(await readFile(path.join(session.workspace.dir, 'ledger.md'), 'utf8'), /\| 1 \| .* \| end_run \| new_run \| Learned the controls\. \|/);
     await session.nextRun();
     assert.equal(session.run, 2);
@@ -215,6 +216,18 @@ describe('access and clock settings', () => {
       await box.call('files', { command: 'create', path: '/memory/notes.md', file_text: 'Noted.' });
       const ended = await box.call('end_run', { summary: 'Out of time.', next: 'new_run' });
       assert.match(textOf(ended), /campaign is over: limit nearly reached \(\S+ left\): no new run in the wrap-up window/);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test('look lists what can scroll: the page and areas on screen', async () => {
+    const url = FIXTURE_URL.replace('game.html', 'scroll.html');
+    const session = await Session.open(await makeConfig({ url }), 'mcp');
+    try {
+      await session.begin();
+      const line = textOf(await new Toolbox(session).call('look', {}));
+      assert.match(line, /scrollable: page ↓ \d+ px · area 20,20 \d+×\d+ ↓ \d+ px/);
     } finally {
       await session.close();
     }

@@ -24,9 +24,7 @@ it learned in the last.
 - **MCP.** The same tools are an MCP server, so Claude Code or any MCP client
   can play a game directly.
 
-> **Status:** early. The tools, the MCP server and the engine work and are
-> tested, and Claude Code has played the test game through them. First runs on
-> real games are next (see [`HANDOFF.md`](HANDOFF.md)).
+> **Status:** early. The tools, the MCP server and the engine are tested, and 30-minute campaigns on a real game (ToME) have run on all three players: Claude Code, Codex and OpenCode Go. Runs of several hours and a second game are next (see [`HANDOFF.md`](HANDOFF.md)).
 
 ## Quick start
 
@@ -47,10 +45,12 @@ The setup script is safe to run again at any time. It checks Node, installs the 
 
 **API keys** go in `.env` (gitignored, created with mode 600) as `NAME=value` lines, e.g. `OPENCODE_API_KEY=…`. game-r reads the entry named by a campaign's `model.api_key_env` from there, unless an environment variable of that name is set. Keys read from the file are never put in the environment, so the agent CLIs and the notify command don't inherit them. `model.secrets_file` points somewhere else.
 
+The default player is Claude Code with Sonnet on high effort, with limits of 10 runs and 48 hours. The shipped campaigns are `tome-ui`, `tome-barrow` (also `-codex` and `-go`), `drones-score`, and `dodge` (also `-codex` and `-go`) on the bundled test game. `node src/cli.ts list` lists them, and `node src/cli.ts config <campaign>` shows one fully resolved. `run` spends real subscription or API budget; `limits` (`hours`, `runs`, `cost_usd`) bound it.
+
 Edit [`game-r.yaml`](game-r.yaml), then:
 
 ```zsh
-node src/cli.ts run dodge              # a two-minute try on the bundled test game
+node src/cli.ts run dodge              # a five-minute smoke test on the bundled test game (Haiku)
 node src/cli.ts run tome-ui            # play until done or a limit is reached
 node src/cli.ts status                 # how every campaign is doing
 node src/cli.ts stop tome-ui           # stop after the current turn
@@ -75,7 +75,11 @@ How the agent works through a campaign:
 
 - Each end point in the game (a death, a win, a game over) ends a run. The agent then updates its memory, and the next run starts afresh.
 - In a roguelike, `runs` therefore counts deaths, so bound such a campaign by `hours`.
-- The agent keeps its memory in `/memory`: `README.md` holds the goal checklist, the current state and the plan; `guide.md` describes the game; `lessons.md` holds what it has learned.
+- The agent keeps its memory in `/memory`:
+  - `README.md` holds the goal checklist, the current state and the plan.
+  - `guide.md` is the big picture of the game and how to play it, kept to a manageable size. It points by key to the detail.
+  - `lessons.md` holds the detail: every lesson learned, keyed and grouped by topic.
+- Every fifth run starts with a Review that tidies both files. A copy of the memory is kept with each run.
 - Each run's report and timeline are in its folder.
 
 ```yaml
@@ -132,13 +136,13 @@ notify:
 
 | Tool | Does |
 |---|---|
-| `look` | Screenshot (image pixels = CSS pixels), optional labelled grid for aiming, zoom, save a copy |
+| `look` | Screenshot (image pixels = CSS pixels), optional labelled grid for aiming, zoom, save a copy; notes what can scroll |
 | `read_page` | The page's accessibility tree with element refs to click; or a help/documentation page by URL, read in a separate browser |
 | `act` | A batch of inputs: click, tap, drag, swipe, pinch, long press, keys (held for a time), type, scroll, wait, navigate |
 | `console` | Console messages, page errors, failed requests, dialogs |
 | `clock` | Pause, advance and resume game time |
 | `browser` | Switch device or orientation, resize, restart |
-| `files` | Its workspace: `/memory` (kept across runs), `/run` (this run), `/runs` (earlier runs, read-only) |
+| `files` | Its workspace: `/memory` (kept across runs), `/run` (this run), `/runs` (earlier runs, read-only); `view` can find lines |
 | `status` | The status line plus tokens and cost (every other result already ends with the status line: local time, run, time and calls against the limits, game time, wrap-up warnings) |
 | `log` | Add a stamped line to the run's timeline (`/run/log.md`) |
 | `notify` | Tell you something now |
@@ -161,10 +165,11 @@ instructions. Output goes to the same campaign folder as `game-r run`.
 ```
 runs/<campaign>/
   ledger.md          one row per run: start, time, calls, cost, how it ended, summary
-  memory/            the agent's memory and your view of the campaign: README.md (goal, now, plan), guide.md, lessons.md
-  run-001/           report.md (objective, outcome), log.md (stamped timeline), run.json (facts),
-                     transcript.jsonl, shots/, live.jpg, and whatever the agent wrote
+  memory/            the agent's memory and your view of the campaign: README.md (goal, now, plan), guide.md (big picture), lessons.md (detail)
+  run-001/           report.md (objective, outcome), log.md (stamped timeline), run.json (facts), memory/ (copy at the run's end),
+                     transcript.jsonl, shots/, live.jpg, video/ and trace.zip when enabled, and whatever the agent wrote
   status.json        state, run, calls, tokens, cost, elapsed time, last error
+  campaign.lock      one process per campaign at a time; stop.request asks a running campaign to stop
   profile/           the browser profile (in-game saves persist across runs)
 ```
 

@@ -146,7 +146,7 @@ It shows local time with its zone, the run, wall time and tool calls used agains
 
 | Tool | Arguments | Does |
 |---|---|---|
-| `look` | `grid?` (overlay labelled cells for canvas aiming), `region?` (zoom), `save_as?` | Screenshot plus URL, title and viewport. `save_as` writes it into the run directory for reports. |
+| `look` | `grid?` (overlay labelled cells for canvas aiming), `region?` (zoom), `save_as?` | Screenshot plus URL, title and viewport, and a `scrollable:` line when the page or an area on screen has more content beyond its edges (phones show no scrollbars, so a screenshot alone can't tell; scrolling drawn inside a canvas can't be detected). `save_as` writes it into the run directory for reports. |
 | `read_page` | `boxes?`, `find?`, `depth?`, `url?` | Accessibility snapshot with element refs (`button "Explore" [ref=e12]`). With `url`, reads a documentation page in a short-lived headless browser of its own (about 2 s), so it doesn't share the game's clock, storage or console. It returns the page's plain text (capped; `find` filters it), then closes. A probe found plain text more faithful than a snapshot here: GitHub's file view hides the file's lines from the accessibility tree. |
 | `act` | `actions: Action[]`, `look_after?` | Runs a batch of inputs in order; stops at the first failure; returns `ok`/reason per action. |
 | `console` | `all?`, `problems_only?` | Console messages, page errors and failed network requests. |
@@ -188,7 +188,7 @@ suits the game and its instructions.
 
 | Tool | Arguments | Does |
 |---|---|---|
-| `files` | `view` / `create` / `str_replace` / `insert` / `delete` / `rename` | File access with the same commands as Anthropic's memory tool, confined to three roots: `/memory` (read-write, kept across runs), `/run` (read-write, this run), `/runs` (read-only, earlier runs of this campaign). Listings show each file's last change. |
+| `files` | `view` / `create` / `str_replace` / `insert` / `delete` / `rename` | File access with the same commands as Anthropic's memory tool, confined to three roots: `/memory` (read-write, kept across runs), `/run` (read-write, this run), `/runs` (read-only, earlier runs of this campaign). Listings show each file's last change; `view` with `find` returns only matching lines, for key lookups in long files. |
 | `log` | `text` | Appends `- 14:02:07 (+3m24s) <text>` to `/run/log.md`. That file is the run's one timeline: the framework adds run start, warnings, notifications and run end to it, and the agent can't edit it directly. |
 
 ### Run
@@ -257,12 +257,14 @@ runs/<campaign>/
   ledger.md            framework: one row per run, regenerated from every run.json
   memory/              agent: kept across runs; also the user's view of the campaign
     README.md          start here, one page: Goal (checklist), Now (state + next action), Plan, Files
-    guide.md           the game: purpose, rules and mechanics, controls, strategy, open questions, sources
-    lessons.md         lessons, failed approaches included
+    guide.md           the big picture, kept manageable: purpose, rules, controls, best strategy, open questions, sources;
+                       distils lessons.md and points to its keys
+    lessons.md         the detail, cumulative: keyed entries "- [key] situation → what to do (run, evidence)" by topic
   run-NNN/
     run.json           framework: times, calls, tokens, cost, how it ended, next, summary (replaces end.json)
     report.md          agent: Objective (at the start), Outcome (at the end)
     log.md             the run's timeline: `log` entries plus framework events, all stamped
+    memory/            framework: a copy of /memory as the run ended
     transcript.jsonl · shots/ · live.jpg · video/ · trace.zip
   config.yaml · campaign.lock · status.json · stop.request · profile/
 ```
@@ -271,23 +273,27 @@ runs/<campaign>/
 - **The instructions are the brief and stay fixed** (they are the system prompt). README.md's Goal turns them into a checklist of verifiable criteria. An item is ticked only with evidence: a `/runs/run-NNN/…` path to a screenshot or a log line.
 - **The agent need not start from nothing.** Instructions work best in three parts: Goal; Getting started, a known plan or direction from the user for the opening (what to read first, what usually works), which the agent follows before anything else; and Deliverables. A campaign can also start with knowledge: files put in `runs/<campaign>/memory/` before its first run are kept, because on the first run the framework copies only the templates whose files are missing. No new mechanism is needed for either.
 - **README.md's Now is the only handoff:** the current state and one concrete next action.
+- **The guide is the big picture; lessons are the detail.** For runs of hours or days, memory must stay useful rather than grow into a log. lessons.md is cumulative: every lesson is a keyed entry, grouped by topic, cleaned only at Reviews (duplicates merged, wrong or contradicted entries fixed or deleted, hunches settled). guide.md is the distilled picture, kept to a manageable size and rewritten in place; it points to lesson keys for detail. Each run start reads README.md and guide.md and looks lessons up by key (`files view` with `find`), so the reading cost stays flat as lessons grow. History never goes in either: it lives in run reports, logs and the ledger.
+- **Every fifth run is a Review run** (runs 5, 10, …; the opening also says so): before playing, the agent cleans lessons.md, re-distils guide.md, checks that every key the guide cites exists, and re-checks the Goal and Plan. The opening also states each memory file's size, as a fact. When a run ends, the framework copies /memory into the run's folder, so nothing a reorganisation removes is lost, and the memory's evolution can be read back. (A crashed run, never sealed, gets no copy; screenshots belong in /run so the copies stay small. /memory is meant to be small text: very large seed files slow every run's opening and copy.) The Review cadence follows the run number, which continues across process restarts, so it also works under `game-r mcp`.
 - **Facts are the framework's; judgement is the agent's.** Times, calls, tokens, cost, end reasons and whether the run changed /memory go in `run.json`, `ledger.md`, the `log.md` stamps and the status line. `run.json` is written at run start and completed by every controlled exit (`end_run`, `finish`, `close`). A crashed run therefore shows as interrupted, with last-known totals. `log.md` and `run.json` join the files the agent cannot write. The ledger is also put into each run opening, because /runs shows only run folders.
 
 ### The run protocol (framework prompt)
 
 1. **Orient.** Follow the instructions' getting-started plan first, if there is one. On the first run, whatever the time limit, read the game's own help before the first consequential choice: how to play, help screens, manual, tutorial, and any documentation the instructions name (`read_page {url}`). Write what matters in guide.md with its sources, and turn the instructions into README.md's Goal. Later, when a new system or screen appears, look for its help first. The run opening says when /memory is still the template. (The second ToME run skipped reading under a 30-minute limit when the step said only "keep it proportionate", so the step now says it applies whatever the time limit.)
-2. **Start of each run.** Read README.md, lessons.md and the parts of guide.md the next steps need, check them against the screen, and write the run's Objective in report.md. After a context refresh or compaction, re-read these files rather than rewriting the Objective.
+2. **Start of each run.** Read README.md and guide.md, look up the lessons the next steps need, check them against the screen, and write the run's Objective in report.md. After a context refresh or compaction, re-read these files rather than rewriting the Objective.
 3. **During the run.**
    - `log` decisions (with their reasons), milestones and surprises as they happen.
    - Check guide.md before consequential choices rather than taking defaults.
    - Record a lesson the moment it is learned.
    - Keep README.md's Now current at each milestone.
    - In a real-time game, pause the clock before long memory work.
-4. **End of the run.** Write the Outcome, update guide.md and lessons.md (merge, prune, mark hunches "Unverified:"), tick goals with evidence, and set Now's next action. Then `end_run`.
+4. **End of the run.** Write the Outcome, add or update keyed lessons, update guide.md where the big picture changed, tick goals with evidence, and set Now's next action. Then `end_run`.
    - `goal_met` needs evidence for the whole checklist.
    - Running out of time or runs is not `goal_impossible`. While the goal is unmet but possible, use `new_run`; the framework's limits decide when to stop.
    - **Unless the instructions say otherwise, an end point in the game ends the run:** a death, a win or loss, a finished game or match. The agent is told to do the End step and `end_run` rather than start a new game in the same run, so each end point gets framework facts, a fresh context and, if the agent does its part, a memory update. In a roguelike `runs` then counts deaths, so such campaigns are bounded by `hours`. Round-based games can say in their instructions that a round is not an end point.
    - The End step is the agent's job, but the framework checks one fact: did any file in /memory change during the run (names and change times). If not, the first `end_run` of that run does not end it, and says why. A second call ends it regardless. It is a check on file activity, not on content, and it works the same for every player because the run is still open. The ledger's Memory column records the fact.
+
+5. **Review** (every fifth run, when the opening says so), as above.
 
 If the agent is blocked, it notifies the user with what blocks it, what it tried, and what it will do meanwhile. Notes and openings point at these steps by name ("do the End step now") instead of restating them, and tool descriptions say only what each tool does.
 
@@ -363,7 +369,7 @@ Separate campaigns run in parallel, each with its own browser, directory and loc
 | 2 | Engine loop (`game-r run`, `stop`), context refresh, usage and cost, limits, OpenAI-compatible provider | Loop tests against a mock model server | **Built** |
 | 2b | Agent CLI players (Claude Code, Codex) over HTTP MCP; OpenCode Go support (headers, `vision`) | Fake-CLI tests; a real Claude Code smoke run | **Built** (34 tests). Claude Code verified for real; Codex and OpenCode Go await access |
 | 3 | Both example games, live | Hand-played tool checks, then short campaigns per provider | Next (see `HANDOFF.md`) |
-| 3b | §7: status line, `log`, templates and protocol, `run.json` and ledger, run boundaries, `read_page {url}`, `end_run` outcomes, wrap-up warnings, `calls_per_run`, pacing | Unit tests (40); then a 30-minute ToME rerun compared with the first | **Built**; rerun next |
+| 3b | §7: status line, `log`, templates and protocol, `run.json` and ledger, run boundaries, `read_page {url}`, `end_run` outcomes, wrap-up warnings, `calls_per_run`, pacing | Unit tests; then 30-minute ToME runs on all three players | **Built** and run |
 | 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory | |
 | — | Anthropic API provider | — | Deferred: subscriptions cover Claude |
 

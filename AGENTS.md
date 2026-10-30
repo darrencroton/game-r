@@ -54,24 +54,26 @@ src/browser.ts    Playwright: persistent context, devices, console capture, cloc
 src/files.ts      the files tool's backend: /memory (rw), /run (rw), /runs (ro)
 src/tools.ts      the tool registry (zod inputs), the status line, and Toolbox.call (count, validate, pace, run, log, never throw)
 src/prompt.ts     the framework system prompt (tools, memory layout, run protocol) + the campaign's instructions
-templates/        memory (README.md, guide.md, lessons.md) and run (report.md) templates: headings only; the rules live in prompt.ts
 src/mcp.ts        the tools as an MCP server: stdio (`game-r mcp`) or loopback HTTP with a bearer token (for agent CLIs)
 src/engine.ts     `game-r run`: shared set-up, stop and errors; the model loop (openings, refresh, nudges, limits)
 src/agent.ts      `game-r run` with an agent CLI: claude-code (`claude -p`) or codex (`codex exec`) playing over HTTP MCP
 src/model.ts      provider interface, retries, cost, createProvider
 src/openai.ts     OpenAI-compatible Chat Completions provider (fetch); headers, vision switch
+templates/        memory (README.md, guide.md, lessons.md) and run (report.md) templates: headings only; the rules live in prompt.ts
 scripts/drive.ts  hand-play driver: one Session's tools over loopback HTTP (see *Playing hands-on*)
 setup.sh          one-step, re-runnable setup for new users (deps, Chromium, .env, players, config, checks)
-test/             node:test; fixtures/game.html is a small canvas game; fixtures/fake-agent.mjs fakes both CLIs
+.env.example      secrets template; setup.sh copies it to .env (gitignored)
+docs/             MCP-DESIGN.md, the design
+test/             node:test; fixtures: game.html (a small canvas game), scroll.html (scroll areas), fake-agent.mjs (fakes both CLIs)
 ```
 
 ## Commands
 
 ```zsh
 ./setup.sh [--skip-tests]                  # setup / health check, safe to re-run
-npm test                                   # 41 tests, ~15-30 s, real headless Chromium
+npm test                                   # ~15-30 s, real headless Chromium
 npm run typecheck                          # tsc --noEmit over src, test, scripts
-node src/cli.ts list | config <c> | status [c] | run <c> | stop <c> | mcp <c>
+node src/cli.ts list | config <c> | status [c] | run <c> | stop <c> | mcp <c>   [-c game-r.yaml]
 node scripts/drive.ts <c> [--headed]       # hand-play driver
 ```
 
@@ -108,6 +110,8 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
 - The second run (after the fix) kept good memory and lessons, and it learned across runs, but it never read the game's help under a 30-minute limit. Step 1 now applies whatever the time limit and follows the instructions' Getting started first. The user may give the agent a head start: instructions take Goal / Getting started / Deliverables, and files put in a campaign's `memory/` before its first run are kept.
 - An end point in the game (death, win, game over) ends the run unless the instructions say otherwise, so in roguelikes `runs` counts deaths. If /memory hasn't changed during a run, its first `end_run` is held back with the reason (a file-activity check, not a content judgement); this works for every player, because the API loop discards results after a seal.
 - Sonnet on high effort is the default and the benchmark player.
+- Long campaigns keep memory useful through its layout: `guide.md` is the big picture and `lessons.md` the keyed detail, with a Review every fifth run and a snapshot per run. The layout is defined in `src/prompt.ts` and design §7; don't restate it elsewhere.
+- `look` adds a `scrollable:` line because phone screenshots show no scrollbars. Agents had scrolled 13 times in about 1,300 calls, while ToME's race list hides 7 of its 22 races below the fold.
 - Rules live once, in `src/prompt.ts`. Templates hold headings and one descriptive line; notes and openings name protocol steps instead of restating them.
 - `end_run` seals the run; the driver starts the next (a fresh CLI session or conversation), so a late call can't play the next run. Under `game-r mcp` the next run starts at the next call.
 - Every result ends with the status line; tests' `textOf` drops it. Calls are counted before a tool runs, so every line agrees.
@@ -181,12 +185,23 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   The docs site is `developers.openai.com`; when it is blocked, read the
   source on github.com (`openai/codex`, `codex-rs/exec/src/cli.rs`,
   `codex-rs/config/src/mcp_types.rs`).
+- **Codex (verified 2026-10-30, codex-cli 0.163.0):**
+  - It plays through these flags, and it sees MCP images.
+  - Find model names and abilities in `~/.codex/models_cache.json` (`slug`, `supported_reasoning_levels`, `input_modalities`). "terra" is `gpt-6.1-terra`.
+  - Always set `model.name`: `--ignore-user-config` drops the user's default model.
+  - Codex reports tokens but no cost, so set `price_per_mtok` from LiteLLM's list. Cross-check with `npx ccusage@20.0.45 codex session --since YYYYMMDD --json`, matching sessions by thread id.
 - OpenCode Go: Chat Completions at `https://opencode.ai/inference/go/openai/v1`
   (Bearer `OPENCODE_API_KEY`, plus an `x-opencode-session` affinity header).
-  Some models use other APIs (Responses, Messages, Gemini). Most of its strong
-  models are text-only (set `vision: false`); `glm-5.3-flash` takes images.
-  Reasoning values differ by model. The source of truth is `sst/models.dev`
-  → `providers/opencode-go`.
+  Some models use other APIs (Responses, Messages, Gemini). Reasoning values
+  differ by model. `sst/models.dev` → `providers/opencode-go` gives each
+  model's API type, but its prices didn't match the live API's (below).
+- **OpenCode Go (verified 2026-10-30):**
+  - The key is in `.env`.
+  - The model list is at `https://opencode.ai/inference/go/v1/models` (`/openai/v1/models` returns 404). It gives each model's modalities, efforts and prices.
+  - Trust `usage.opencode.list_cost` for prices: `deepseek-v4.1-flash` is $0.30 / $1.20 per million tokens, not models.dev's $0.15 / $0.60. `cost` is 0 because usage is billed to the Go allowance.
+  - DeepSeek returns `reasoning_content`; `src/openai.ts` sends it back.
+- **Config:** YAML merge keys (`<<: *anchor`) are enabled. Before, they were ignored without a warning, and a campaign that reused a model block fell back to the default player, which would have started the real `claude`. Check a new campaign with `node src/cli.ts config <c>` before running it.
+- **ccusage** (`npx ccusage@20.0.45`, not a dependency) prices Claude Code, Codex and OpenCode logs from LiteLLM. Use it to cross-check the ledger's costs.
 - **Tests must never start a real agent CLI**: it spends the user's
   subscription. `test/helpers.ts` points `model.command` at a non-existent
   path, and tests merge overrides with `deepMerge` (a shallow spread once
@@ -196,15 +211,14 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
 - `events.once(child, 'close')` rejects when the child emits `error` (for
   example ENOENT); `src/agent.ts` uses its own `finished()` helper.
 
-**The user's Mac (local sessions, from 2026-10-30)**
-- Repo at `~/Local/git-repos/game-r`; work on `main` for now (the user's call).
-- Chromium is in the default Playwright cache; `setup.sh` installs it only if
-  missing. `claude`, `codex` (signed in with ChatGPT) and `opencode` are on PATH.
-- `ping-me "<msg>"` sends the user an iMessage; it is the notify command.
-- Long runs: `caffeinate -i node src/cli.ts run <c>` so the Mac doesn't sleep.
-- `browser.headless: false` (or `drive.ts --headed`) shows the game window.
+**Where work happens now: the user's Mac (from 2026-10-30)**
+- **Git:** the repo is at `~/Local/git-repos/game-r`. Work on the current branch (`main` for now; don't create branches unless asked). Commit only with the user's approval, then push when asked.
+- **Tools on PATH:** Chromium is in the default Playwright cache (`setup.sh` installs it only if missing). `claude`, `codex` (signed in with ChatGPT) and `opencode` are on PATH.
+- **Notifications:** `ping-me "<msg>"` sends the user an iMessage; it is the notify command.
+- **Long runs and headed play:** see README (*Long campaigns on a laptop*, `headless: false`).
+- **Runs are kept:** each new campaign gets its own name rather than archiving or deleting earlier ones.
 
-**The cloud environment (Claude Code on the web)**
+**Historical: the Claude Code on the web environment (first sessions only)**
 - Playwright's browsers are preinstalled at `/opt/pw-browsers`
   (`PLAYWRIGHT_BROWSERS_PATH`). Never run `playwright install`; keep
   `playwright` pinned to 1.63.0 so it finds them.
@@ -219,8 +233,8 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   or work around it; use the live github.io builds. ToME's build also needs
   the Emscripten SDK.
 - No `ANTHROPIC_API_KEY` was set in the first session; the Claude subscription works through `claude -p`.
-- A stop hook asks for everything to be committed and pushed before a turn
-  ends. Work on a branch (`claude/...`), never `main`.
+- A stop hook there asked for everything to be committed and pushed before a
+  turn ended, and work went on `claude/...` branches.
 - Don't `pkill -f <pattern>` from Bash: the pattern also matches the shell
   running the command and kills it (exit 144). Find PIDs with
   `ps -eo pid,args | grep "[n]ode driver"` and `kill` them. Background

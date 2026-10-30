@@ -1,5 +1,7 @@
 # The game
 
+<!-- The big picture, distilled from lessons.md; point to its keys for detail, e.g. "see [opening-moves]". -->
+
 ## Purpose
 
 <!-- What the game is, how you win and lose, what matters. -->
@@ -11,6 +13,8 @@
 <!-- By name ("the Explore button, bottom left"); screen positions only as device notes. -->
 
 ## Strategy
+
+<!-- The current best way to play, including the opening. -->
 
 ## Open questions
 

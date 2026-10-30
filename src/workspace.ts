@@ -1,10 +1,10 @@
 import { constants } from 'node:fs';
-import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, cp, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import type { Config } from './config.ts';
 
-export const ENGINE_FILES = new Set(['transcript.jsonl', 'shots', 'live.jpg', 'run.json', 'log.md', 'video', 'trace.zip']);
+export const ENGINE_FILES = new Set(['transcript.jsonl', 'shots', 'live.jpg', 'run.json', 'log.md', 'memory', 'video', 'trace.zip']);
 
 const TEMPLATES = new URL('../templates/', import.meta.url).pathname;
 
@@ -121,6 +121,26 @@ export class Workspace {
     const parts: string[] = [];
     for (const name of names) parts.push(`${name}@${(await stat(path.join(this.memoryDir, name))).mtimeMs}`);
     return parts.join('|');
+  }
+
+  /** Copies /memory into run-NNN/memory as it is now, replacing any earlier copy for that run. */
+  async snapshotMemory(run: number): Promise<void> {
+    const dest = path.join(this.dir, runName(run), 'memory');
+    await rm(dest, { recursive: true, force: true });
+    await cp(this.memoryDir, dest, { recursive: true });
+  }
+
+  /** "README.md 24 lines · guide.md 140 lines · map.jpg 41 KB" for the top-level files in /memory. */
+  async memorySizes(): Promise<string> {
+    const parts: string[] = [];
+    for (const name of (await readdir(this.memoryDir)).filter((n) => !n.startsWith('.')).sort()) {
+      const file = path.join(this.memoryDir, name);
+      const info = await stat(file);
+      if (!info.isFile()) continue;
+      const text = /\.(md|txt)$/i.test(name) && info.size < 1_000_000;
+      parts.push(text ? `${name} ${(await readFile(file, 'utf8')).split('\n').length} lines` : `${name} ${Math.ceil(info.size / 1024)} KB`);
+    }
+    return parts.join(' · ') || 'empty';
   }
 
   /** Writes run.json (atomically) and, unless told not to, regenerates ledger.md. */

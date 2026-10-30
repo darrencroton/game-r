@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import type { Config } from './config.ts';
 import type { Drive } from './engine.ts';
 import { MCP_SERVER_NAME, startHttpMcp, type HttpMcp } from './mcp.ts';
-import { FatalModelError, type TokenUsage } from './model.ts';
+import { cost, FatalModelError, type TokenUsage } from './model.ts';
 
 const NUDGE = `Carry on with your instructions: act through the ${MCP_SERVER_NAME} tools. Call end_run when this run is over.`;
 const MAX_IDLE = 3;
@@ -225,7 +225,8 @@ export async function agentLoop(drive: Drive): Promise<void> {
       const prompt = resume ? NUDGE : await drive.opening(toolbox.calls > runCallsAt ? 'refresh' : 'run');
       const r = await invoke(drive, cli, mcp, prompt, resume);
       const calls = toolbox.calls - before;
-      let spent = 0;
+      // Claude Code reports a running cost per session; Codex reports none, so it is estimated from model.price_per_mtok.
+      let spent = cost(r.usage, config.model.price_per_mtok);
       if (r.costUsd !== null && r.sessionId) {
         spent = Math.max(0, r.costUsd - (costSeen.get(r.sessionId) ?? 0));
         costSeen.set(r.sessionId, r.costUsd);

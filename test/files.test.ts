@@ -29,6 +29,13 @@ test('create, view, str_replace, insert, rename and delete', async () => {
   await assert.rejects(files.view('/memory/plan.md'), /does not exist/);
 });
 
+test('view with find returns only the matching lines', async () => {
+  const files = await setup();
+  await files.create('/memory/lessons.md', '# Lessons\n- [bree-stairs] Take the Way down.\n- [potions] Buy healing first.\n');
+  assert.equal(await files.view('/memory/lessons.md', undefined, '[POTIONS]'), '     3\t- [potions] Buy healing first.');
+  assert.match(await files.view('/memory/lessons.md', undefined, 'dragon'), /No lines in \/memory\/lessons\.md contain "dragon"/);
+});
+
 test('str_replace insists on a unique match', async () => {
   const files = await setup();
   await files.create('/run/notes.md', 'a\na\n');

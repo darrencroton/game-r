@@ -6,7 +6,7 @@ import type { Content, ToolResult } from './tools.ts';
 type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
 type Message =
   | { role: 'system' | 'user'; content: string | Part[] }
-  | { role: 'assistant'; content: string | null; tool_calls?: unknown[] }
+  | { role: 'assistant'; content: string | null; tool_calls?: unknown[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string };
 
 function parts(content: Content[]): Part[] {
@@ -85,7 +85,9 @@ class OpenAIConversation implements Conversation {
     const message = res.choices?.[0]?.message;
     if (!message) throw new FatalModelError(`Unexpected response: ${JSON.stringify(res).slice(0, 300)}`);
     const toolCalls: any[] = message.tool_calls ?? [];
-    this.messages.push({ role: 'assistant', content: message.content ?? null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) });
+    // Servers that return reasoning_content (DeepSeek) get it back, so the history stays as they produced it.
+    const reasoning = typeof message.reasoning_content === 'string' && message.reasoning_content ? { reasoning_content: message.reasoning_content } : {};
+    this.messages.push({ role: 'assistant', content: message.content ?? null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}), ...reasoning });
     const calls = toolCalls.map((tc) => {
       let args: unknown = tc.function?.arguments ?? '{}';
       try {

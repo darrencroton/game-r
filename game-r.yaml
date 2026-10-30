@@ -70,7 +70,7 @@ defaults:
 # deaths: bound such campaigns by hours, with runs: null.
 
 campaigns:
-  # The two example games. They run on the defaults above (Claude Code, Opus) unless they say otherwise.
+  # The two example games. They run on the defaults above (Claude Code, Sonnet, high effort) unless they say otherwise.
   tome-ui:
     url: https://darrencroton.github.io/tales-of-middle-earth/
     browser: { device: "Pixel 7" }
@@ -86,7 +86,7 @@ campaigns:
     url: https://darrencroton.github.io/tales-of-middle-earth/
     browser: { device: "Pixel 7", headless: false }
     limits: { runs: null, hours: 0.5 } # a short sample: usage, cost and how the agent copes; raise to continue
-    instructions: |
+    instructions: &barrow |
       Goal: create a new hero and take them to the bottom of the Barrow-downs, the first dungeon
       (dungeon level 10, 500 ft), alive. Play as a phone player would, through the game's own UI.
 
@@ -95,6 +95,31 @@ campaigns:
 
       Deliverables: log depth, character level and hit points at each new dungeon level.
       Notify me when you reach each new dungeon level, and if the hero dies.
+
+  # The same campaign on the other two players, for comparison with tome-barrow (Claude Code, Sonnet high).
+  tome-barrow-codex:
+    url: https://darrencroton.github.io/tales-of-middle-earth/
+    browser: { device: "Pixel 7", headless: false }
+    # Codex reports tokens but no cost; these are gpt-6.1-terra's API list prices (LiteLLM, as ccusage uses), for an estimate.
+    model: { provider: codex, name: gpt-6.1-terra, reasoning: high, price_per_mtok: { input: 1, output: 5, cache_read: 0.05 } }
+    limits: { runs: null, hours: 0.5 }
+    instructions: *barrow
+
+  tome-barrow-go:
+    url: https://darrencroton.github.io/tales-of-middle-earth/
+    browser: { device: "Pixel 7", headless: false }
+    model: &go
+      provider: openai-compatible
+      name: deepseek-v4.1-flash      # OpenCode Go; takes images; reasoning low | high | max
+      base_url: https://opencode.ai/inference/go/openai/v1
+      api_key_env: OPENCODE_API_KEY
+      headers: { x-opencode-session: "{conversation}" }
+      reasoning: high
+      # List prices in USD per million tokens, as OpenCode's own usage.opencode.list_cost reports them (models.dev lists
+      # half this as an off-peak price). Go bills its allowance, so this is an API-equivalent estimate.
+      price_per_mtok: { input: 0.30, output: 1.20, cache_read: 0.006 }
+    limits: { runs: null, hours: 0.5 }
+    instructions: *barrow
 
   drones-score:
     url: https://simonw.github.io/battledrones/
@@ -110,24 +135,18 @@ campaigns:
   dodge:
     url: ./test/fixtures/game.html
     model: { name: haiku }
-    limits: { runs: 2, hours: 0.25 }
+    limits: { runs: 1, hours: 0.08, wrap_up_minutes: 1 }   # a ~5-minute smoke test
     instructions: &dodge |
       This is a small test game. Survive as long as you can; your best score is the result.
 
   dodge-codex:
     url: ./test/fixtures/game.html
-    model: { provider: codex, name: null, reasoning: low }
-    limits: { runs: 2, hours: 0.25 }
+    model: { provider: codex, name: gpt-6.1-terra, reasoning: low, price_per_mtok: { input: 1, output: 5, cache_read: 0.05 } }
+    limits: { runs: 1, hours: 0.08, wrap_up_minutes: 1 }   # a ~5-minute smoke test
     instructions: *dodge
 
   dodge-go:
     url: ./test/fixtures/game.html
-    model:
-      provider: openai-compatible
-      name: glm-5.3-flash            # OpenCode Go model id; glm-5.3-flash takes images. Text-only ones (glm-5.3, kimi-k3…) need vision: false
-      base_url: https://opencode.ai/inference/go/openai/v1
-      api_key_env: OPENCODE_API_KEY
-      headers: { x-opencode-session: "{conversation}" }
-      reasoning: high                # values differ by model (glm: low | high | max)
-    limits: { runs: 2, hours: 0.25 }
+    model: { <<: *go, reasoning: low }
+    limits: { runs: 1, hours: 0.08, wrap_up_minutes: 1 }   # a ~5-minute smoke test
     instructions: *dodge

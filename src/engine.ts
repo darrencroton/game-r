@@ -51,13 +51,16 @@ export function kTokens(n: number): string {
 async function opening(session: Session, kind: 'run' | 'refresh'): Promise<string> {
   const status = await statusLine(session);
   if (kind === 'refresh') {
-    return `Your context was refreshed to keep it small. This is still run ${session.run} and the game is exactly as you left it.\n\n${status}\n\nDo the Start step's reading (README.md, lessons.md, the parts of guide.md you need; your Objective is in /run/report.md), then carry on.`;
+    return `Your context was refreshed to keep it small. This is still run ${session.run} and the game is exactly as you left it.\n\n${status}\n\nDo the Start step's reading again (your Objective is already in /run/report.md; if this run is a Review run, finish the Review first), then carry on.`;
   }
   const earlier = session.run > 1 ? `Earlier runs:\n\n${(await session.workspace.ledger()).split('\n').slice(2).join('\n')}` : 'This is the first run of the campaign.';
   const start = (await session.workspace.memoryIsTemplate())
     ? '/memory still holds the templates: Orient first, then do the Start step.'
-    : 'Begin with the Start step.';
-  return `Run ${session.run} has started: the browser is open at ${session.config.url}.\n\n${status}\n\n${earlier}\n\n${start}`;
+    : session.run % 5 === 0
+      ? 'This is a Review run: do the Review step first, then the Start step.'
+      : 'Begin with the Start step.';
+  const sizes = `Memory: ${await session.workspace.memorySizes()}.`;
+  return `Run ${session.run} has started: the browser is open at ${session.config.url}.\n\n${status}\n\n${earlier}\n\n${sizes} ${start}`;
 }
 
 export interface RunOptions {

@@ -75,3 +75,10 @@ test('API keys come from the environment first, then the secrets file', async ()
   assert.throws(() => apiKey({ ...model, secrets_file: path.join(dir, 'none.env') }), /Add TEST_FILE_KEY=/);
   assert.equal(apiKey({ ...model, api_key_env: null }), null);
 });
+
+test('YAML merge keys work, so a campaign can reuse a model block', () => {
+  const file = parseConfigText('x: &m { provider: codex, name: a }\ncampaigns:\n  c:\n    url: https://example.com/\n    instructions: Play.\n    model: { <<: *m, name: b }\n', 'merge.yaml');
+  const c = resolveCampaign(file, 'c', '/base');
+  assert.equal(c.model.provider, 'codex');
+  assert.equal(c.model.name, 'b');
+});

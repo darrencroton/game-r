@@ -156,6 +156,16 @@ export class GameBrowser {
     return this.page.evaluate(() => performance.now());
   }
 
+  /** Visible areas (and the page) that can scroll further, as one line; '' when nothing scrolls. */
+  async scrollHints(): Promise<string> {
+    const found = (await this.page.evaluate(SCROLL_HINTS)) as { page: boolean; x: number; y: number; w: number; h: number; up: number; down: number; left: number; right: number }[];
+    const parts = found.map((a) => {
+      const more = [a.up && `↑ ${a.up}`, a.down && `↓ ${a.down}`, a.left && `← ${a.left}`, a.right && `→ ${a.right}`].filter(Boolean).join(' ');
+      return `${a.page ? 'page' : `area ${a.x},${a.y} ${a.w}×${a.h}`} ${more} px`;
+    });
+    return parts.length ? `scrollable: ${parts.join(' · ')}` : '';
+  }
+
   async pause(): Promise<void> {
     if (!this.context || !this.clockAllowed) throw new Error('The clock is not available.');
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -264,6 +274,36 @@ export async function readDocument(engine: 'chromium' | 'firefox' | 'webkit', ur
     await browser.close();
   }
 }
+
+/** Runs in the page: the page and each visible scrollable element with more content beyond its edges (CSS px). */
+const SCROLL_HINTS = `(() => {
+  const more = (el) => ({ up: Math.round(el.scrollTop), down: Math.round(el.scrollHeight - el.clientHeight - el.scrollTop), left: Math.round(el.scrollLeft), right: Math.round(el.scrollWidth - el.clientWidth - el.scrollLeft) });
+  const worth = (m) => m.up > 8 || m.down > 8 || m.left > 8 || m.right > 8;
+  const tidy = (m) => ({ up: m.up > 8 ? m.up : 0, down: m.down > 8 ? m.down : 0, left: m.left > 8 ? m.left : 0, right: m.right > 8 ? m.right : 0 });
+  const out = [];
+  const root = document.scrollingElement;
+  if (root) {
+    const rs = getComputedStyle(root);
+    const m = more(root);
+    if (/hidden|clip/.test(rs.overflowY)) { m.up = 0; m.down = 0; }
+    if (/hidden|clip/.test(rs.overflowX)) { m.left = 0; m.right = 0; }
+    if (worth(m)) out.push({ page: true, x: 0, y: 0, w: 0, h: 0, ...tidy(m) });
+  }
+  const walk = document.body ? document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT) : null;
+  for (let el = walk && walk.currentNode, seen = 0; el && seen < 5000 && out.length < 6; el = walk.nextNode(), seen++) {
+    if (el === root) continue;
+    if (el.scrollHeight <= el.clientHeight + 8 && el.scrollWidth <= el.clientWidth + 8) continue;
+    const cs = getComputedStyle(el);
+    if (!/auto|scroll/.test(cs.overflowY + cs.overflowX) || cs.visibility === 'hidden') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 40 || r.height < 40 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) continue;
+    const m = more(el);
+    if (!/auto|scroll/.test(cs.overflowY)) { m.up = 0; m.down = 0; }
+    if (!/auto|scroll/.test(cs.overflowX)) { m.left = 0; m.right = 0; }
+    if (worth(m)) out.push({ page: false, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), ...tidy(m) });
+  }
+  return out;
+})()`;
 
 function gridStyle(width: number, height: number, size: number): string {
   let lines = '';
