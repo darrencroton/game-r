@@ -54,7 +54,7 @@ Not critical for a first release: the Anthropic API provider, live steering, a d
 
 ## Next steps, in order
 
-1. **Third `tome-barrow` run** (30 min, Sonnet high, fresh state, `runs: null`, Getting started in the instructions). Compare with the second run: did it read How to play and Help, did each death end a run with a memory update, cost per hour on Sonnet.
+1. **Third `tome-barrow` run**: done (above). Next ToME sample: longer (1–3 h), to see learning past the opening and to cover R1.
 2. **R2 and R3**: the tiny provider checks above; fix the flags where reality differs.
 3. **R1**: a long run, once 1–2 look right.
 4. **R4**: Battle Drones.
@@ -111,6 +111,22 @@ Address these together with the issues and lessons from the first `tome-barrow` 
 - **Orientation still didn't happen.** A short time limit visibly pushed the agent to rush; the protocol's Orient step reads as optional.
 - In a roguelike, **`runs` counts deaths**. The default of 10 runs (and 3 here) ends a campaign quickly. Hours, not runs, should bound such campaigns.
 - Cost per call grows with the run's context (each run is one CLI session), so long runs cost more per call.
+
+### Third `tome-barrow` run, after step 3c (2026-10-30, Sonnet high, Pixel 7, fresh state, `runs: null`, Getting started given)
+
+30 minutes: 7 real runs, one hero per run, plus 14 empty runs at the end (a framework bug, now fixed).
+
+| | Second (Opus) | Third (Sonnet high) |
+|---|---|---|
+| Rate in real play | ≈ $16/h, ≈ 12.6 calls/min, ≈ $0.021/call | **≈ $10.4/h**, ≈ 16 calls/min, ≈ $0.011/call (runs 1–7: $4.46, 414 calls, 26 min) |
+| Orientation | None | **Yes**: guide.md cites "Menu → How to play; More → Help" (Help only skimmed) |
+| Deepest / outcome | DL2; 3 deaths | DL2 alive (run 7, a Mage via the Way down route); 6 deaths |
+| End points | Each death ended a run | Each death ended a run, with memory updated every time (ledger Memory column) |
+| Learning | Yes | Yes, and specific. Runs 1–5: Bree's `>` drops a new hero into a level-5 prison ambush; it identified the trigger and tried other classes. Run 6 tried levelling in town and died to a mercenary. Run 7 found that "Way down" leads to level 1 and survived |
+
+**Bug found and fixed:** with `runs: null`, the agent obeyed the wrap-up warning (too little time to play, End step, `new_run`) and the framework started another run every time: 14 empty runs in the last 4 minutes, about $1 of overhead and 14 browser restarts. Now no new run starts while the campaign's time or cost warning is on, once a run has been played.
+
+**What this says:** Sonnet high is a good benchmark. It costs about two-thirds as much per hour, plays faster per call, follows the protocol and the Getting started direction, and learns across runs. The game is hard at level 1 in its default setup; that is game knowledge for the instructions or memory, not the framework.
 
 ---
 

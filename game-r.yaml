@@ -44,7 +44,8 @@ defaults:
     cost_usd: null                   # needs price_per_mtok (API providers) or a CLI that reports cost
     calls_per_run: null              # tool calls per run, for every player; the run is sealed when it is reached
     wrap_up_minutes: 5               # the status line warns this long before the hours limit (and past 90% of cost_usd,
-                                     # or with 10 calls left) so the agent can do its End step; limits themselves stay hard
+                                     # or with 10 calls left) so the agent can do its End step; no new run starts while the
+                                     # time or cost warning is on; limits themselves stay hard
   pace:
     seconds_per_call: 0              # minimum seconds between game-tool calls (0 = off; max 600). Slows the agent to spread
                                      # a subscription's usage or an API budget over more hours; workspace tools are never paced.

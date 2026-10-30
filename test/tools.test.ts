@@ -206,6 +206,20 @@ describe('access and clock settings', () => {
     assert.equal(await readFile(facts, 'utf8'), before);
   });
 
+  test('no new run starts inside the wrap-up window', async () => {
+    const session = await Session.open(await makeConfig({ limits: { runs: null, hours: 1, wrap_up_minutes: 61 } }), 'mcp');
+    try {
+      const box = new Toolbox(session);
+      await session.begin();
+      assert.equal(session.run, 1);
+      await box.call('files', { command: 'create', path: '/memory/notes.md', file_text: 'Noted.' });
+      const ended = await box.call('end_run', { summary: 'Out of time.', next: 'new_run' });
+      assert.match(textOf(ended), /campaign is over: limit nearly reached \(\S+ left\): no new run in the wrap-up window/);
+    } finally {
+      await session.close();
+    }
+  });
+
   test('pace.seconds_per_call spaces out game tools only', async () => {
     const session = await Session.open(await makeConfig({ pace: { seconds_per_call: 0.4 } }), 'mcp');
     try {

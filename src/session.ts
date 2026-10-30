@@ -192,18 +192,19 @@ export class Session {
     return null;
   }
 
-  /** The first hard limit reached, if any. `atRunEnd` also counts the run limit. */
+  /** The first hard limit reached, if any. `atRunEnd` also counts the run limit, and the wrap-up window once a run has been played. */
   limitReached(atRunEnd = false): string | null {
     const { limits } = this.config;
     if (limits.hours !== null && this.elapsedMs >= limits.hours * 3_600_000) return `limit reached: ${limits.hours} hours`;
     if (limits.cost_usd !== null && this.usage.cost_usd >= limits.cost_usd) return `limit reached: $${limits.cost_usd}`;
     if (atRunEnd && limits.runs !== null && this.run >= limits.runs) return `limit reached: ${limits.runs} runs`;
+    const near = this.campaignNearLimit();
+    if (atRunEnd && this.run > 0 && near.length) return `limit nearly reached (${near.join(', ')}): no new run in the wrap-up window`;
     return null;
   }
 
-  /** The wrap-up warning while a limit is near; written to log.md the first time in each run. */
-  async warning(): Promise<string | null> {
-    if (this.sealed || this.state !== 'running') return null;
+  /** What makes the campaign as a whole due to wrap up: little time left, or most of the budget spent. */
+  private campaignNearLimit(): string[] {
     const { limits } = this.config;
     const near: string[] = [];
     if (limits.hours !== null) {
@@ -211,6 +212,14 @@ export class Session {
       if (left <= limits.wrap_up_minutes * 60_000) near.push(`${span(left)} left`);
     }
     if (limits.cost_usd !== null && this.usage.cost_usd >= limits.cost_usd * 0.9) near.push(`$${this.usage.cost_usd.toFixed(2)} of $${limits.cost_usd} spent`);
+    return near;
+  }
+
+  /** The wrap-up warning while a limit is near; written to log.md the first time in each run. */
+  async warning(): Promise<string | null> {
+    if (this.sealed || this.state !== 'running') return null;
+    const { limits } = this.config;
+    const near = this.campaignNearLimit();
     if (limits.calls_per_run !== null && limits.calls_per_run - this.callsThisRun <= 10) near.push(`${Math.max(0, limits.calls_per_run - this.callsThisRun)} calls left in this run`);
     if (!near.length) return null;
     const warning = `⚠ wrap up: ${near.join(', ')}. Do the End step now.`;
