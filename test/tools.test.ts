@@ -233,6 +233,20 @@ describe('access and clock settings', () => {
     }
   });
 
+  test('usage is pending while an agent CLI session runs, so a crash leaves it unknown', async () => {
+    const session = await Session.open(await makeConfig(), 'engine');
+    try {
+      await session.begin();
+      const facts = async () => JSON.parse(await readFile(path.join(session.workspace.runDir, 'run.json'), 'utf8'));
+      await session.awaitUsage();
+      assert.equal((await facts()).usage_known, false);
+      await session.addUsage({ input: 10, output: 5, cache_read: 0, cache_write: 0 }, 0.01, 3, true);
+      assert.equal((await facts()).usage_known, true);
+    } finally {
+      await session.close();
+    }
+  });
+
   test('pace.seconds_per_call spaces out game tools only', async () => {
     const session = await Session.open(await makeConfig({ pace: { seconds_per_call: 0.4 } }), 'mcp');
     try {

@@ -223,6 +223,7 @@ export async function agentLoop(drive: Drive): Promise<void> {
       }
       const before = toolbox.calls;
       const prompt = resume ? NUDGE : await drive.opening(toolbox.calls > runCallsAt ? 'refresh' : 'run');
+      await session.awaitUsage();
       const r = await invoke(drive, cli, mcp, prompt, resume);
       const calls = toolbox.calls - before;
       // Claude Code reports a running cost per session; Codex reports none, so it is estimated from model.price_per_mtok.

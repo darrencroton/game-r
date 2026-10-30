@@ -96,6 +96,14 @@ campaigns:
       Deliverables: log depth, character level and hit points at each new dungeon level.
       Notify me when you reach each new dungeon level, and if the hero dies.
 
+  # The long run (release check R1): 3 hours on the benchmark player. Run it with caffeinate (see HANDOFF.md).
+  tome-barrow-long:
+    url: https://darrencroton.github.io/tales-of-middle-earth/
+    browser: { device: "Pixel 7", headless: false }
+    limits: { runs: null, hours: 3 }
+    notify: { on: [agent, campaign_end, limit, error] }   # no message per run end: in a roguelike that is every death
+    instructions: *barrow
+
   # The same campaign on the other two players, for comparison with tome-barrow (Claude Code, Sonnet high).
   tome-barrow-codex:
     url: https://darrencroton.github.io/tales-of-middle-earth/

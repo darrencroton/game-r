@@ -25,7 +25,7 @@ export interface RunFacts {
   summary?: string;
 }
 
-function pidAlive(pid: number): boolean {
+export function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

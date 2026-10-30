@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { stringify } from 'yaml';
 import { ConfigError, listCampaigns, loadConfig } from './config.ts';
 import { runCampaign } from './engine.ts';
+import { pidAlive } from './workspace.ts';
 import { FatalModelError } from './model.ts';
 import { serveMcp } from './mcp.ts';
 
@@ -39,6 +40,10 @@ async function showStatus(configFile: string, name: string): Promise<void> {
   }
   const hours = (Number(status.elapsed_ms) / 3_600_000).toFixed(2);
   const cost = status.mode === 'engine' ? ` · $${Number(status.usage?.cost_usd ?? 0).toFixed(2)}` : '';
+  if (status.state === 'running' && !pidAlive(Number(status.pid))) {
+    status.state = 'interrupted';
+    status.done_reason = 'game-r is not running; run it again to continue';
+  }
   const reason = status.done_reason ? ` (${status.done_reason})` : '';
   console.log(`${name}: ${status.state}${reason} · run ${status.run} · ${hours} h${cost} · updated ${status.updated_at}${status.last_error ? `\n  last error: ${status.last_error}` : ''}`);
 }

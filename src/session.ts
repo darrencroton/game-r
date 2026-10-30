@@ -51,6 +51,8 @@ export class Session {
   private runEnd: Pick<RunFacts, 'ended_at' | 'duration_ms' | 'ended_by' | 'next' | 'summary' | 'memory_updated'> = {};
   private memoryAtStart = '';
   private endRunHeld = false;
+  /** An agent CLI session is running and hasn't reported its usage yet. */
+  private usageAwaited = false;
   private warned = false;
   private nextPaceAt = 0;
 
@@ -103,6 +105,7 @@ export class Session {
       u.cost_usd += costUsd;
     }
     if (!known) this.runUsageKnown = false;
+    this.usageAwaited = false;
     await this.saveRun();
   }
 
@@ -145,6 +148,12 @@ export class Session {
     if (this.sealed && this.state === 'running') await this.begin();
   }
 
+  /** Marks this run's usage as pending until the agent CLI session now starting reports it (a crash leaves it unknown). */
+  async awaitUsage(): Promise<void> {
+    this.usageAwaited = true;
+    await this.saveRun(false);
+  }
+
   /** Writes the open run's facts so far, without rebuilding the ledger. */
   async checkpoint(): Promise<void> {
     if (!this.sealed) await this.saveRun(false);
@@ -166,7 +175,7 @@ export class Session {
       input_tokens: this.runUsage.input_tokens,
       output_tokens: this.runUsage.output_tokens,
       cost_usd: this.runUsage.cost_usd,
-      usage_known: this.runUsageKnown,
+      usage_known: this.runUsageKnown && !this.usageAwaited,
       ...this.runEnd,
     }, ledger);
   }

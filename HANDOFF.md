@@ -46,7 +46,7 @@ On `main`. 45 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 | # | Gap | Why it is critical | Check |
 |---|---|---|---|
-| R1 | **A long unattended run** (2–6 h, Sonnet high) | Every real run so far is 30 min or less. Untested for real: Claude Code's own context compaction inside a long run, cost growth per call, the wrap-up warning and the hours limit, a CLI crash or subscription-limit retry mid-campaign, notifications over hours. A clean run won't show crash or retry paths unless they happen, so also kill game-r itself mid-run and run it again (the run should show as interrupted, the stale lock clear and the campaign carry on), and note disk growth per hour (`shots/`, `transcript.jsonl` have no retention) | A `tome-barrow` run with `hours: 3`, plus one deliberate kill and restart |
+| R1 | **A long unattended run** (2–6 h, Sonnet high). *Crash part done 2026-10-30:* a `kill -9` mid-run, then a restart, recovered cleanly (see AGENTS.md); two fixes followed (usage pending while a CLI session runs; `status` detects a dead pid) | Every real run so far is 30 min or less. Untested for real: Claude Code's own context compaction inside a long run, cost growth per call, the wrap-up warning and the hours limit, a CLI crash or subscription-limit retry mid-campaign, notifications over hours. A clean run won't show crash or retry paths unless they happen, so also kill game-r itself mid-run and run it again (the run should show as interrupted, the stale lock clear and the campaign carry on), and note disk growth per hour (`shots/`, `transcript.jsonl` have no retention) | A `tome-barrow` run with `hours: 3`, plus one deliberate kill and restart |
 | R2 | ~~Codex as a player, for real~~ **Done 2026-10-30** | Played the test game and 30 min of ToME; sees images; tokens match ccusage. Still unexercised: a session resume | Watch for a resume in the long run |
 | R3 | ~~OpenCode Go, for real~~ **Done 2026-10-30** | Played the test game and 30 min of ToME through game-r's own loop, with images and `reasoning_content`. Still unexercised: the loop's context refresh (needs a long run) | A long Go run |
 | R4 | **The protocol on a second game** | Only ToME has been played; the protocol must hold for any game and goal | A short Battle Drones (real-time, pause the clock) campaign |
@@ -55,13 +55,28 @@ Not critical for a first release: the Anthropic API provider, live steering, a d
 
 ## Next steps, in order
 
-1. **Third `tome-barrow` run**: done (above). Next ToME sample: longer (1–3 h), to see learning past the opening and to cover R1.
-2. **R2 and R3**: done (see above).
-3. **R1**: a long run (2–3 h, Sonnet high) on a fresh `tome-barrow-long` campaign, with one deliberate kill and restart.
-4. **R4**: Battle Drones.
-5. Then the items still open below, multi-run learning (§10 step 4) and *Future work*, with the user.
+1. **The long run (R1), in a fresh session.** Everything is ready: campaign `tome-barrow-long` (3 h, Sonnet high, `runs: null`, headed, notifications for milestones, deaths and the end).
+   - **The human, before starting:**
+     - Keep the Mac on power, with the lid open (or closed in clamshell mode with a display). `caffeinate -i` stops idle sleep but not lid-close sleep.
+     - Check Claude subscription headroom with `/usage`. About 3 h of Sonnet at roughly 16 calls/min is roughly $30 API-equivalent. If that's a worry, set `pace.seconds_per_call` (for example 5) on the campaign.
+     - Expect iMessages for each new dungeon level, each death and the end.
+   - **The session:** start it from the repo with: *"Read HANDOFF.md and AGENTS.md, then do the long run (R1) as described in Next steps."*
+   - **What the session does:**
+     1. `caffeinate -i node src/cli.ts run tome-barrow-long` in the background.
+     2. Check it after a few minutes: calls, ledger, `log.md`.
+     3. Leave it alone, checking hourly with `node src/cli.ts status tome-barrow-long` and the ledger.
+     4. Afterwards, analyse:
+        - cost per hour and context growth: per-call input tokens across a long run; Claude Code's compaction, if any shows;
+        - memory over time: snapshots in `run-NNN/memory/`, guide size against lessons size;
+        - the Review runs (5, 10, …): was lessons.md cleaned and guide.md re-distilled?
+        - learning across runs: deepest level and how the agent died;
+        - the wrap-up and the hours limit;
+        - disk growth (`du -sh runs/tome-barrow-long`).
+     5. Record the results here, fix what it shows (through the panel), commit and push.
+2. **R4**: a short Battle Drones campaign (real-time; pause the clock), to check the protocol on a second game.
+3. Then the items still open below, multi-run learning (§10 step 4) and *Future work*, with the user.
 
-The earlier steps (access checks, hand-played tool tests, the first live campaign) are done; their results are below and in `AGENTS.md`.
+The earlier steps (access checks, hand-played tool tests, the first live campaigns, R2, R3, the crash check) are done; their results are below and in `AGENTS.md`.
 
 ---
 

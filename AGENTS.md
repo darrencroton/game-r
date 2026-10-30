@@ -208,6 +208,11 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   replaced the whole model block, fell back to the default provider and ran
   the real `claude`). Real checks: tiny, deliberate, announced (Haiku, low
   effort, `hours: 0.03`).
+- **A crash of game-r itself (checked 2026-10-30 with `kill -9` mid-run):**
+  - Chromium dies with it, because it runs over a pipe.
+  - The orphaned `claude -p` exits within about 30 s, once its MCP server is gone.
+  - Running the campaign again clears the stale lock and marks the run interrupted (calls kept, usage unknown). Elapsed time carries over, and play continues with memory intact.
+  - `game-r status` reports a dead pid as interrupted.
 - `events.once(child, 'close')` rejects when the child emits `error` (for
   example ENOENT); `src/agent.ts` uses its own `finished()` helper.
 
