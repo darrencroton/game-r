@@ -293,7 +293,7 @@ export function createTools(session: Session): Tool[] {
       'region [x,y,w,h] zooms in at device resolution. save_as copies the image to /run or /memory (e.g. "/run/findings/menu-overlap.jpg"). ' +
       (config.browser.keep_shots === 'all'
         ? 'Every screenshot is also kept under /run/shots. '
-        : 'Every screenshot is also saved under /run/shots until the run ends; then only those a /run or /memory file names are kept. ') +
+        : 'Every screenshot is also saved under /run/shots; when you end the run, only those a /run or /memory file names are kept. ') +
       'A "scrollable:" line lists the page or areas on screen with more content beyond their edges.',
     input: z.strictObject({
       grid: z.union([z.boolean(), z.number().int().min(16).max(400)]).optional(),

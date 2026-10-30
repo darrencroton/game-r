@@ -167,7 +167,7 @@ runs/<campaign>/
   ledger.md          one row per run: start, time, calls, cost, how it ended, summary
   memory/            the agent's memory and your view of the campaign: README.md (goal, now, plan), guide.md (big picture), lessons.md (detail)
   run-001/           report.md (objective, outcome), log.md (stamped timeline), run.json (facts), memory/ (copy at the run's end),
-                     transcript.jsonl, shots/ (only those named in a file, by default), live.jpg, video/ and trace.zip when enabled, and whatever the agent wrote
+                     transcript.jsonl, shots/ (by default, only those a file names once the agent ends the run), live.jpg, video/ and trace.zip when enabled, and whatever the agent wrote
   status.json        state, run, calls, tokens, cost, elapsed time, last error
   campaign.lock      one process per campaign at a time; stop.request asks a running campaign to stop
   profile/           the browser profile (in-game saves persist across runs)

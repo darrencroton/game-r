@@ -33,13 +33,15 @@ defaults:
     profile: campaign                # campaign: saved game data persists across runs | run: fresh each run
     record_video: false
     trace: false
-    keep_shots: referenced           # referenced: when a run ends, keep only the screenshots (run-NNN/shots/) that a file in the
-                                     # run folder or /memory names (an interrupted run keeps them all) | all: keep every one
+    keep_shots: referenced           # referenced: when the agent ends a run (end_run), keep only the screenshots (run-NNN/shots/)
+                                     # that a file in the run folder or /memory names; a run ended any other way (a stop, a limit,
+                                     # a crash) keeps them all | all: keep every one
   access: player                     # player | developer (developer adds the evaluate tool)
   clock: allowed                     # allowed | off (the agent may pause and advance game time)
   context:
-    refresh_tokens: 200000           # API providers: start a fresh context (from /memory) at this many input tokens.
-                                     # Agent CLIs manage their own context (auto-compaction); each new run starts a fresh session.
+    refresh_tokens: 200000           # keeps each player's context below about this many tokens. API providers: a fresh context
+                                     # (from /memory). Claude Code: its auto-compaction window (--autocompact, 100k–1M; it compacts
+                                     # about 30k below it). Codex: model_auto_compact_token_limit. Each new run starts a fresh session.
   limits:                            # hard stops; null = no limit
     runs: 10
     hours: 48

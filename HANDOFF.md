@@ -18,7 +18,7 @@ Work now happens locally on the user's Mac (from 2026-10-30), on `main`.
 
 ## Where things stand
 
-On `main`. 47 tests pass (`npm test`, about 15–30 s); typecheck clean.
+On `main`. 48 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 | Part | State |
 |---|---|
@@ -56,8 +56,8 @@ Not critical for a first release: the Anthropic API provider, live steering, a d
 ## Next steps, in order
 
 1. **Fix what the long run showed** (with the user; see *The long run* below):
-   - **Context growth in agent CLI sessions** (agreed; options for Claude Code, Codex and OpenCode being investigated): `context.refresh_tokens` applies only to game-r's own API loop. Claude Code never compacted, so a long run's cost per call doubled.
-   - ~~**Screenshot retention**~~ **Done:** `browser.keep_shots` (default `referenced`): at each seal, only the screenshots a run file or /memory names are kept; `all` keeps every one; an interrupted run keeps them all.
+   - ~~**Context growth in agent CLI sessions**~~ **Done:** `context.refresh_tokens` now sets Claude Code's `--autocompact` and Codex's `model_auto_compact_token_limit`, and game sessions load no CLAUDE.md or AGENTS.md (see *Context caps* below).
+   - ~~**Screenshot retention**~~ **Done:** `browser.keep_shots` (default `referenced`): when the agent ends a run, only the screenshots a run file or /memory names are kept; `all` keeps every one; a run ended any other way keeps them all.
    - Instructions stay as they are: the user liked the creative Word of Recall route.
 2. **R1, the rest:** a run that reaches its hours limit (the wrap-up warning and the stop), ideally with a CLI resume.
 3. **R4**: a short Battle Drones campaign (real-time; pause the clock), to check the protocol on a second game.
@@ -86,7 +86,7 @@ Campaign `tome-barrow-long`: Claude Code on Sonnet, high effort, Pixel 7, headed
 
 - $18.4/h overall, against $10.4/h in the 30-minute sample. Speed was about 15 calls a minute.
 - **Claude Code never compacted.** Context grew by about 1.1k tokens per call (mostly screenshots), from 18k at the start to 514k in run 7. Cache reads are about 80% of the cost, so a run's cost grows with the square of its length: run 7 cost twice as much per call as the short runs.
-- A cap at about 200k tokens, as `context.refresh_tokens` gives the API loop, would have cut run 7 by roughly 60% and the campaign by roughly a quarter. game-r doesn't apply it to agent CLIs (`src/agent.ts` starts a new session only per run).
+- A cap at about 200k tokens, as `context.refresh_tokens` gives the API loop, would have cut the context re-read by about half (see *Context caps* below). game-r didn't apply it to agent CLIs then; it does now.
 
 **Memory and learning:**
 
@@ -110,9 +110,27 @@ Campaign `tome-barrow-long`: Claude Code on Sonnet, high effort, Pixel 7, headed
 
 **Proposals:**
 
-1. **Cap context in agent CLI sessions.** Either use each CLI's own compaction setting, if it has one (Codex's `model_auto_compact_token_limit`; Claude Code's is to be probed), or have game-r end the session after a set number of calls in a run and continue with the existing *refresh* opening. Probe first.
-2. **Screenshot retention:** done, as `browser.keep_shots: referenced | all` (default `referenced`). At each seal it keeps the screenshots that a text file in the run folder (bar the transcript) or `/memory` names, and drops the rest; `all` is for debugging what the agent saw.
+1. **Cap context in agent CLI sessions:** done, with each CLI's own compaction (see *Context caps* below).
+2. **Screenshot retention:** done, as `browser.keep_shots: referenced | all` (default `referenced`). When the agent ends a run, it keeps the screenshots that a file in the run folder (bar the transcript and media) or `/memory` names, and drops the rest; `all` is for debugging what the agent saw. Existing runs were cleaned by hand on 2026-10-31 (2,568 screenshots, 98 MB, to the Bin).
 3. ~~**Instructions**: whether the first descent must be on foot, and "touch only".~~ Declined: the user liked the creative solution.
+
+### Context caps and instruction files (probed 2026-10-31)
+
+Real probes on the test game (`runs/probe-*`, `runs/check-flags-*`), small models on low effort, about 160 calls each:
+
+| Option (game-r passes it now) | Result |
+|---|---|
+| Claude Code `--autocompact <N>k` (N = `refresh_tokens`, clamped to 100k–1M) | At 100k it compacted twice in `-p` mode, at about 68.5k each time (it fires about 30k below the window), down to about 5k, taking about 10 s |
+| Claude Code env `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` (undocumented) | No CLAUDE.md or AGENTS.md loads; the first turn's context fell from 17.5k to 8.3k tokens |
+| Codex `-c model_auto_compact_token_limit=<N>` | At 50k it compacted 4 times within one `codex exec` (context 48–59k → 22–31k) |
+| Codex `-c project_doc_max_bytes=0` | AGENTS.md stays out |
+| Claude Code `--safe-mode` | Rejected: it also removes game-r's MCP tools |
+| `CLAUDE_CONFIG_DIR` (full isolation) | Not signed in there; would need a second login. The fallback if the env variable stops working |
+
+- **Why:** both CLIs search from the run folder upwards, so every game session had loaded the user's `~/.claude/CLAUDE.md` and this repo's `AGENTS.md` (ToME's debug hooks, earlier results). No player used the hooks. Codex sessions loaded AGENTS.md too.
+- **After compaction** both agents kept updating /memory, did the End step and called `end_run`; Claude's `total_cost_usd` still added up.
+- **Estimate:** replaying the long run's turn counts with a 200k cap and no instruction files cuts context re-read by about 49%, about 40% of its cost.
+- **Watch in the next long run:** compaction doesn't ask the agent to save to /memory first, as game-r's own refresh does.
 
 ---
 

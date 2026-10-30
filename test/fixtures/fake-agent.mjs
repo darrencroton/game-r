@@ -17,7 +17,7 @@ try {
   n = Number(readFileSync(stateFile, 'utf8'));
 } catch {}
 writeFileSync(stateFile, String(n + 1));
-appendFileSync(process.env.FAKE_AGENT_SCRIPT + '.log', JSON.stringify({ argv, sessionEnv: process.env.CLAUDE_CODE_SESSION_ID ?? null }) + '\n');
+appendFileSync(process.env.FAKE_AGENT_SCRIPT + '.log', JSON.stringify({ argv, sessionEnv: process.env.CLAUDE_CODE_SESSION_ID ?? null, noClaudeMds: process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS ?? null }) + '\n');
 const step = script[n] ?? { calls: [] };
 
 let url;

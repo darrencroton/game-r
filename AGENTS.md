@@ -213,6 +213,9 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   - The orphaned `claude -p` exits within about 30 s, once its MCP server is gone.
   - Running the campaign again clears the stale lock and marks the run interrupted (calls kept, usage unknown). Elapsed time carries over, and play continues with memory intact.
   - `game-r status` reports a dead pid as interrupted.
+- **Context and instruction files in agent CLIs (probed 2026-10-31):**
+  - Neither CLI compacted in a long run: Sonnet 5.5's window is 1M (Claude Code compacts at about 967k) and Codex's default is about 90% of its window. game-r now passes `context.refresh_tokens` as Claude Code's `--autocompact` (it fires about 30k below) and Codex's `model_auto_compact_token_limit`. Both compact inside a headless session.
+  - Both CLIs search upwards from the run folder (inside this repo) for instruction files, so game sessions loaded `~/.claude/CLAUDE.md` and this file. game-r sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` (undocumented; check a session log for "Contents of" after a Claude Code upgrade) and Codex's `project_doc_max_bytes=0`. `--safe-mode` also removes the MCP tools; `CLAUDE_CONFIG_DIR` needs a second login.
 - `events.once(child, 'close')` rejects when the child emits `error` (for
   example ENOENT); `src/agent.ts` uses its own `finished()` helper.
 

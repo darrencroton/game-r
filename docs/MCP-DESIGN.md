@@ -78,7 +78,7 @@ game-r.yaml ──► game-r run <campaign>
   goes in as the system prompt (Claude Code) or developer instructions
   (Codex). When the CLI ends its turn, game-r resumes the same session with a
   nudge; each new run starts a fresh session from /memory; the CLI compacts its
-  own context. Failures (such as a subscription's usage limit) back off from a
+  own context at `context.refresh_tokens`, and loads no CLAUDE.md or AGENTS.md. Failures (such as a subscription's usage limit) back off from a
   minute up to an hour and retry, up to 8 times; three sessions in a row with
   no tool call end the campaign.
 - **`game-r mcp <campaign>`** serves the same tools over stdio, same campaign
@@ -229,7 +229,7 @@ loop until the campaign is done, a limit is hit, or a stop is requested:
   cacheable prefix.
 - **Openings**: a run opening (run number, the status line, the ledger of earlier runs, whether /memory is still the template, and the protocol step to start with) or a refresh opening ("still run N, the game is as you left it; do the Start step's reading").
 - **Context size** is bounded by `context.refresh_tokens` (default 200k input
-  tokens per request). A refresh is "simple compaction" with the agent as the
+  tokens per request; agent CLIs use it as their own compaction limit). A refresh is "simple compaction" with the agent as the
   summariser: it saves to /memory, then the next request starts clean. Nothing
   earlier is ever edited or deleted client-side, which current Claude models
   require: editing earlier turns invalidates their thinking blocks (preserved
@@ -266,7 +266,7 @@ runs/<campaign>/
     log.md             the run's timeline: `log` entries plus framework events, all stamped
     memory/            framework: a copy of /memory as the run ended
     transcript.jsonl · shots/ · live.jpg · video/ · trace.zip
-                       shots/: at the seal, only the screenshots a run file or /memory names are kept (browser.keep_shots)
+                       shots/: when the agent ends the run, only the screenshots a run file or /memory names are kept (browser.keep_shots)
   config.yaml · campaign.lock · status.json · stop.request · profile/
 ```
 

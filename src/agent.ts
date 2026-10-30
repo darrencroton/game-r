@@ -57,9 +57,12 @@ function claudeCode(drive: Drive, mcp: HttpMcp): AgentCli {
       'none',
       ...(model.name ? ['--model', model.name] : []),
       ...(model.reasoning !== 'off' ? ['--effort', model.reasoning] : []),
+      '--autocompact',
+      `${Math.min(1000, Math.max(100, Math.round(drive.config.context.refresh_tokens / 1000)))}k`,
       ...(resume ? ['--resume', resume] : []),
     ],
-    env: { MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_S * 1000) },
+    // No CLAUDE.md or AGENTS.md from the user's home or the folders above the run.
+    env: { MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_S * 1000), CLAUDE_CODE_DISABLE_CLAUDE_MDS: '1' },
     parse(stdout) {
       let r: any;
       try {
@@ -105,6 +108,10 @@ function codex(drive: Drive, mcp: HttpMcp): AgentCli {
     `${server}.tool_timeout_sec=${TOOL_TIMEOUT_S}`,
     '-c',
     'features.shell_tool=false',
+    '-c',
+    `model_auto_compact_token_limit=${drive.config.context.refresh_tokens}`,
+    '-c',
+    'project_doc_max_bytes=0',
     '-c',
     `developer_instructions=${toml(drive.system)}`,
     ...(model.name ? ['-m', model.name] : []),

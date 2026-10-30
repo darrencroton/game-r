@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Session } from '../src/session.ts';
+import { clockTime, Session } from '../src/session.ts';
 import { Toolbox } from '../src/tools.ts';
 import { FIXTURE_URL, makeConfig, textOf } from './helpers.ts';
 
@@ -221,23 +221,28 @@ describe('access and clock settings', () => {
     }
   });
 
-  test('a sealed run keeps only the screenshots a file names, unless keep_shots is all', async () => {
-    for (const keep of ['referenced', 'all'] as const) {
-      const session = await Session.open(await makeConfig({ browser: { keep_shots: keep } }), 'mcp');
+  test('end_run keeps only the screenshots a file names, unless keep_shots is all; a stop keeps them all', async () => {
+    for (const keep of ['referenced', 'all', 'stop'] as const) {
+      const session = await Session.open(await makeConfig({ browser: { keep_shots: keep === 'all' ? 'all' : 'referenced' } }), 'mcp');
       try {
         const box = new Toolbox(session);
         await session.begin();
         for (let i = 0; i < 3; i += 1) await box.call('look', {});
         await box.call('files', { command: 'create', path: '/run/findings.md', file_text: 'Overlap: /run/shots/0002.jpg' });
         await box.call('files', { command: 'create', path: '/memory/notes.md', file_text: 'Goal ticked (/runs/run-001/shots/0003.jpg).' });
-        await box.call('end_run', { summary: 'Looked.', next: 'new_run' });
+        if (keep === 'stop') await session.close('stopped');
+        else await box.call('end_run', { summary: 'Looked.', next: 'new_run' });
         const shots = (await readdir(path.join(session.workspace.dir, 'run-001', 'shots'))).sort();
-        assert.deepEqual(shots, keep === 'all' ? ['0001.jpg', '0002.jpg', '0003.jpg'] : ['0002.jpg', '0003.jpg']);
+        assert.deepEqual(shots, keep === 'referenced' ? ['0002.jpg', '0003.jpg'] : ['0001.jpg', '0002.jpg', '0003.jpg']);
         await stat(path.join(session.workspace.dir, 'run-001', 'live.jpg'));
       } finally {
         await session.close();
       }
     }
+  });
+
+  test('clock times have two-digit hours', () => {
+    assert.match(clockTime(new Date(2026, 9, 31, 0, 5, 7)), /^00:05:07 /);
   });
 
   test('look lists what can scroll: the page and areas on screen', async () => {

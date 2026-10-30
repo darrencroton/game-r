@@ -23,7 +23,7 @@ async function play(provider: 'claude-code' | 'codex', steps: Step[], over: Reco
   const calls = (await readFile(script + '.log', 'utf8'))
     .trim()
     .split('\n')
-    .map((l) => JSON.parse(l) as { argv: string[]; sessionEnv: string | null });
+    .map((l) => JSON.parse(l) as { argv: string[]; sessionEnv: string | null; noClaudeMds: string | null });
   const status = JSON.parse(await readFile(path.join(config.output, config.name, 'status.json'), 'utf8'));
   return { reason, calls, status, config, lines };
 }
@@ -46,6 +46,8 @@ describe('agent CLI drivers', () => {
     assert.ok(first!.includes('--strict-mcp-config'));
     assert.equal(after(first!, '--model'), 'test-model');
     assert.equal(after(first!, '--effort'), 'high');
+    assert.equal(after(first!, '--autocompact'), '200k');
+    assert.ok(calls.every((c) => c.noClaudeMds === '1'), 'CLAUDE.md discovery is on in the agent CLI');
     assert.ok(!first!.includes('--resume'));
     assert.equal(after(second!, '--resume'), 'session-1');
     assert.match(after(second!, '-p'), /^Carry on with your instructions/);
@@ -60,7 +62,7 @@ describe('agent CLI drivers', () => {
     assert.equal(reason, 'the agent reported the goal met');
     const [first, second] = calls.map((c) => c.argv);
     assert.deepEqual(first!.slice(0, 2), ['exec', '--json']);
-    for (const setting of ['features.shell_tool=false', 'mcp_servers.gamer.default_tools_approval_mode="approve"', 'mcp_servers.gamer.bearer_token_env_var="GAMER_MCP_TOKEN"', 'model_reasoning_effort="high"']) {
+    for (const setting of ['features.shell_tool=false', 'mcp_servers.gamer.default_tools_approval_mode="approve"', 'mcp_servers.gamer.bearer_token_env_var="GAMER_MCP_TOKEN"', 'model_reasoning_effort="high"', 'model_auto_compact_token_limit=200000', 'project_doc_max_bytes=0']) {
       assert.ok(first!.includes(setting), `missing -c ${setting}`);
     }
     assert.ok(first!.some((a) => a.startsWith('developer_instructions="You are playing')));
