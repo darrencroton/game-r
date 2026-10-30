@@ -18,81 +18,49 @@ Work now happens locally on the user's Mac (from 2026-10-30), on `main`.
 
 ## Where things stand
 
-Merged to `main`. 40 tests pass (`npm test`, about 30 s); typecheck clean.
+On `main`. 41 tests pass (`npm test`, about 15–30 s); typecheck clean.
 
 | Part | State |
 |---|---|
-| Config (`game-r.yaml`) | Done. Defaults: Claude Code on Opus. Campaigns: `tome-ui`, `drones-score` (Codex), and `dodge`, `dodge-codex`, `dodge-go` on the local test game |
-| Tools, workspace, session | Done: look, read_page, act, console, clock, browser, evaluate (developer), files, status, notify, end_run |
+| Config (`game-r.yaml`) | Done. Defaults: Claude Code on Sonnet, high effort (the benchmark). Campaigns: `tome-ui`, `tome-barrow`, `drones-score` (Codex), and `dodge`, `dodge-codex`, `dodge-go` on the local test game |
+| Tools, workspace, session | Done: look, read_page (also docs by URL), act, console, clock, browser, evaluate (developer), files, status, log, notify, end_run; status line on every result |
+| Memory and reporting (design §7) | Done: templates, run protocol, report.md, stamped log.md, run.json, ledger.md, end_run outcomes, run sealing, wrap-up warnings, calls_per_run, pacing |
 | `game-r mcp` (stdio) | Done, tested with the MCP client SDK |
-| `game-r run` with an **agent CLI** (`claude-code`, `codex`) | Done. game-r serves the tools over HTTP MCP on loopback with a bearer token, runs the CLI headless, resumes its session with a nudge when it stops, starts a fresh session for each new run, backs off and retries on failures (subscription limits), stops idle agents, enforces limits |
-| `game-r run` with **openai-compatible** | Done: own loop, append-only conversations, context refresh via /memory, `headers` with `{conversation}`, `vision: false` for text-only models |
+| `game-r run` with an **agent CLI** (`claude-code`, `codex`) | Done: tools over loopback HTTP MCP with a bearer token, headless CLI, resume with a nudge, a fresh session per run, retries with backoff, idle stop, limits enforced (also while the CLI is silent) |
+| `game-r run` with **openai-compatible** | Done: own loop, append-only conversations, context refresh, `headers` with `{conversation}`, `vision: false` |
 | Anthropic API provider | Not built; not needed while you use subscriptions |
 
-**Verified for real:**
-- **Claude Code:** a smoke run of the `dodge` game on Haiku, in the cloud
-  session (6 tool calls). It looked, read the page, clicked Start, wrote
-  /memory and ended the campaign. Vision works.
-- **The tools by hand:** paused-clock play on the fixture game.
+**Verified for real (locally, 2026-10-30):**
 
-**Not yet verified for real:**
-- **Codex:** not installed here. Its flags come from the Codex source
-  (`codex-rs/exec/src/cli.rs`, `codex-rs/config/src/mcp_types.rs`): `exec
-  --json`, `resume <id>`, `-c mcp_servers.gamer.url=…`, `bearer_token_env_var`,
-  `default_tools_approval_mode="approve"`, `features.shell_tool=false`,
-  `developer_instructions`. Tested against a fake CLI only.
-- **OpenCode Go:** no key here, and opencode.ai was blocked. The endpoint
-  `https://opencode.ai/inference/go/openai/v1`, the `x-opencode-session` header
-  and the model ids come from `sst/models.dev`
-  (`providers/opencode-go`, accessed 2026-10-15).
-- **The example games:** github.io was blocked.
+- **Claude Code:** three real ToME campaigns (Opus): 15-minute sample, a 30-minute 3-run rerun after design step 3b (results below), and the test game on Haiku earlier in the cloud.
+- **The tools by hand** on the test game, the docs reader on GitHub, `ping-me` notifications.
+
+**Not yet verified for real:** Codex as a player (installed and signed in, never run through game-r), OpenCode Go (key pending), any run longer than 30 minutes, Battle Drones. See *Release readiness*.
 
 ---
 
+## Release readiness (2026-10-30)
+
+**Not yet.** The core (tools, workspace, memory and reporting, run lifecycle, limits, logging) is built, reviewed by the external panel and tested. But a release needs these first, in order of importance:
+
+| # | Gap | Why it is critical | Check |
+|---|---|---|---|
+| R1 | **A long unattended run** (2–6 h, Sonnet high) | Every real run so far is 30 min or less. Untested for real: Claude Code's own context compaction inside a long run, cost growth per call, the wrap-up warning and the hours limit, a CLI crash or subscription-limit retry mid-campaign, notifications over hours. A clean run won't show crash or retry paths unless they happen, so also kill game-r itself mid-run and run it again (the run should show as interrupted, the stale lock clear and the campaign carry on), and note disk growth per hour (`shots/`, `transcript.jsonl` have no retention) | A `tome-barrow` run with `hours: 3`, plus one deliberate kill and restart |
+| R2 | **Codex as a player, for real** | It is one of the user's two subscriptions and has only been tested against a fake CLI (flags from the source, now codex 0.163.0) | `node src/cli.ts run dodge-codex` (tiny); then a short ToME run |
+| R3 | **OpenCode Go, for real** | The third player, also never run for real; with it, game-r's own API loop, its context refresh and its end-of-run path have never run for real | Key in `.env`; `node src/cli.ts run dodge-go` |
+| R4 | **The protocol on a second game** | Only ToME has been played; the protocol must hold for any game and goal | A short Battle Drones (real-time, pause the clock) campaign |
+
+Not critical for a first release: the Anthropic API provider, live steering, a dashboard, the *Future work* list.
+
 ## Next steps, in order
 
-1. **Check access.** *Done locally 2026-10-30: both github.io games reachable, Codex signed in; OpenCode key pending in `.env`.* Run `curl -sI https://simonw.github.io/battledrones/`,
-   `curl -sI https://darrencroton.github.io/tales-of-middle-earth/` and
-   `curl -s https://opencode.ai/inference/go/v1/models -H "Authorization: Bearer $OPENCODE_API_KEY" | head`.
-   Also `codex --version`, and `codex login --device-auth` if it isn't signed
-   in (relay the link and code to the user). Report anything still blocked.
+1. **Third `tome-barrow` run** (30 min, Sonnet high, fresh state, `runs: null`, Getting started in the instructions). Compare with the second run: did it read How to play and Help, did each death end a run with a memory update, cost per hour on Sonnet.
+2. **R2 and R3**: the tiny provider checks above; fix the flags where reality differs.
+3. **R1**: a long run, once 1–2 look right.
+4. **R4**: Battle Drones.
+5. Then the items still open below, multi-run learning (§10 step 4) and *Future work*, with the user.
 
-2. **Hand-played tests of the tools.** Use `scripts/drive.ts` (`AGENTS.md` →
-   *Playing hands-on from a session*). Play `tome-ui` and `drones-score` a
-   little each, with `browser {device}` on desktop and phone. Look for what the
-   tools get wrong on real games and fix it generically. Things to check:
-   - **read_page:** is it readable on these pages (size, noise)?
-   - **Screenshots:** timing during animation; WebGL/canvas in headless.
-   - **ToME:** touch gestures; sheets and cards; the WASM engine under a paused
-     clock (workers aren't covered).
-   - **Battle Drones:** drag selection boxes; wheel zoom; does pausing freeze
-     the simulation?
-   - **Both:** dialogs, service workers, install prompts.
-
-   Record lessons in `AGENTS.md`.
-
-3. **Each provider on the small test game**, short and cheap:
-   - `node src/cli.ts run dodge`, then `dodge-codex`, then `dodge-go`.
-   - Read each `runs/<campaign>/run-*/transcript.jsonl` and the agent's
-     /memory.
-   - **Codex:** confirm it sees the `gamer` tools, its shell tool is off, it
-     can see screenshots (MCP image results), and `resume` works.
-   - **OpenCode Go:** confirm the model id and that `x-opencode-session` is
-     accepted.
-   - **Both:** fix the flags in `src/agent.ts` / `game-r.yaml` where reality
-     differs.
-
-4. **Fix what steps 2 and 3 found.** Run `npm test` (2–3 times if browser
-   code changed) and the typecheck. Commit.
-
-5. **First live campaign**, with the user's choice of game and provider. Keep
-   it short to start, e.g. `limits: { runs: 2, hours: 1 }`. Watch it with
-   `game-r status` and the transcript, then read the agent's reports and
-   /memory together. Tune `src/prompt.ts` only where the agent clearly needs
-   it.
-
-6. Then the build order's step 4 (multi-run learning) and the *Future work*
-   list in `docs/MCP-DESIGN.md`, with the user.
+The earlier steps (access checks, hand-played tool tests, the first live campaign) are done; their results are below and in `AGENTS.md`.
 
 ---
 
@@ -100,7 +68,7 @@ Merged to `main`. 40 tests pass (`npm test`, about 30 s); typecheck clean.
 
 Address these together with the issues and lessons from the first `tome-barrow` run (15 min sample).
 
-**Status:** items 1, 2, 3, 5 and 6 are built as design step 3b (`docs/MCP-DESIGN.md` §7). Pacing is `pace.seconds_per_call`; soft limits are `limits.wrap_up_minutes` warnings; there is a templated memory and a run protocol; a status line ends every result; `end_run` takes `new_run`, `goal_met` or `goal_impossible`. Item 4 waits for a 30-minute rerun of `tome-barrow`, compared with the first.
+**Status:** items 7 and 8 are addressed (Orient now applies whatever the time limit and follows a Getting started plan; an end point in the game ends the run; the framework records whether a run changed /memory and says so at `end_run`; `tome-barrow` has `runs: null`). Item 9: Sonnet on high effort is now the default and the benchmark. Items 1, 2, 3, 5 and 6 are built as design step 3b (`docs/MCP-DESIGN.md` §7). Pacing is `pace.seconds_per_call`; soft limits are `limits.wrap_up_minutes` warnings; there is a templated memory and a run protocol; a status line ends every result; `end_run` takes `new_run`, `goal_met` or `goal_impossible`. Item 4 waits for a 30-minute rerun of `tome-barrow`, compared with the first.
 
 | # | Item | Notes |
 |---|---|---|

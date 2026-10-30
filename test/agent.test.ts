@@ -56,7 +56,7 @@ describe('agent CLI drivers', () => {
   });
 
   test('codex: exec with JSON events, MCP over HTTP, no shell tool, resume by thread id', async () => {
-    const { reason, calls, status } = await play('codex', [{ calls: [['status', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] }]);
+    const { reason, calls, status } = await play('codex', [{ calls: [['files', { command: 'create', path: '/memory/notes.md', file_text: 'Noted.' }]] }, { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] }]);
     assert.equal(reason, 'the agent reported the goal met');
     const [first, second] = calls.map((c) => c.argv);
     assert.deepEqual(first!.slice(0, 2), ['exec', '--json']);
@@ -73,7 +73,7 @@ describe('agent CLI drivers', () => {
   });
 
   test('a new run starts a fresh agent session with the run opening', async () => {
-    const { reason, calls } = await play('claude-code', [{ calls: [['end_run', { summary: 'One.', next: 'new_run' }]] }, { calls: [['end_run', { summary: 'Two.', next: 'new_run' }]] }], {
+    const { reason, calls } = await play('claude-code', [{ calls: [['files', { command: 'create', path: '/memory/notes.md', file_text: 'Noted.' }], ['end_run', { summary: 'One.', next: 'new_run' }]] }, { calls: [['files', { command: 'create', path: '/memory/more.md', file_text: 'More.' }], ['end_run', { summary: 'Two.', next: 'new_run' }]] }], {
       limits: { runs: 2 },
     });
     assert.equal(reason, 'limit reached: 2 runs');

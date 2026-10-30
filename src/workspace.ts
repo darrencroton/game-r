@@ -1,4 +1,5 @@
-import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import type { Config } from './config.ts';
@@ -18,6 +19,7 @@ export interface RunFacts {
   output_tokens?: number;
   cost_usd?: number;
   usage_known?: boolean;
+  memory_updated?: boolean;
   ended_by?: string;
   next?: string;
   summary?: string;
@@ -86,13 +88,17 @@ export class Workspace {
       .sort((a, b) => a - b);
   }
 
-  /** Creates the next run's folder, its report from the template, and the memory templates if /memory is empty. */
+  /** Creates the next run's folder and its report; on the first run, copies in the memory templates the user hasn't provided. */
   async startRun(startedAt: Date, started: string): Promise<number> {
     this.run += 1;
     await mkdir(path.join(this.runDir, 'shots'), { recursive: true });
     if (this.config.browser.profile === 'run') await rm(this.profileDir, { recursive: true, force: true });
-    if (!(await readdir(this.memoryDir)).some((name) => !name.startsWith('.'))) {
-      for (const name of await readdir(path.join(TEMPLATES, 'memory'))) await copyFile(path.join(TEMPLATES, 'memory', name), path.join(this.memoryDir, name));
+    if (this.run === 1) {
+      for (const name of await readdir(path.join(TEMPLATES, 'memory'))) {
+        await copyFile(path.join(TEMPLATES, 'memory', name), path.join(this.memoryDir, name), constants.COPYFILE_EXCL).catch((err: NodeJS.ErrnoException) => {
+          if (err.code !== 'EEXIST') throw err;
+        });
+      }
     }
     const report = await readFile(path.join(TEMPLATES, 'run', 'report.md'), 'utf8');
     await writeFile(path.join(this.runDir, 'report.md'), report.replace('{{run}}', String(this.run)).replace('{{started}}', started));
@@ -106,7 +112,15 @@ export class Workspace {
       readFile(path.join(this.memoryDir, 'README.md'), 'utf8').catch(() => null),
       readFile(path.join(TEMPLATES, 'memory', 'README.md'), 'utf8'),
     ]);
-    return mine === null || mine === template;
+    return mine === template;
+  }
+
+  /** A fingerprint of /memory (every name and its last change), to tell whether a run changed it. */
+  async memoryStamp(): Promise<string> {
+    const names = (await readdir(this.memoryDir, { recursive: true })).sort();
+    const parts: string[] = [];
+    for (const name of names) parts.push(`${name}@${(await stat(path.join(this.memoryDir, name))).mtimeMs}`);
+    return parts.join('|');
   }
 
   /** Writes run.json (atomically) and, unless told not to, regenerates ledger.md. */
@@ -125,18 +139,19 @@ export class Workspace {
       try {
         f = JSON.parse(await readFile(path.join(this.dir, runName(n), 'run.json'), 'utf8').catch(() => 'null'));
       } catch {
-        rows.push(`| ${n} | | | | | run.json unreadable | | |`);
+        rows.push(`| ${n} | | | | | | run.json unreadable | | |`);
         continue;
       }
       if (!f) continue;
       const minutes = f.duration_ms === undefined ? '' : `${Math.round(f.duration_ms / 60_000)} min`;
       const cost = f.usage_known === false ? 'unknown' : f.cost_usd === undefined ? '' : `$${f.cost_usd.toFixed(2)}`;
+      const memory = f.memory_updated === undefined ? '' : f.memory_updated ? 'updated' : 'unchanged';
       const ended = f.ended_at ? (f.ended_by ?? '') : n === this.run && this.locked ? 'running' : 'interrupted';
       const summary = (f.summary ?? '').split('\n')[0]!.slice(0, 200).replace(/\|/g, '/');
       const started = new Date(f.started_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short', hour12: false });
-      rows.push(`| ${n} | ${started} | ${minutes} | ${f.calls ?? ''} | ${cost} | ${ended} | ${f.next ?? ''} | ${summary} |`);
+      rows.push(`| ${n} | ${started} | ${minutes} | ${f.calls ?? ''} | ${cost} | ${memory} | ${ended} | ${f.next ?? ''} | ${summary} |`);
     }
-    return `# Runs of ${this.config.name}\n\n| Run | Started | Time | Calls | Cost | Ended by | Next | Summary |\n|---|---|---|---|---|---|---|---|\n${rows.join('\n')}\n`;
+    return `# Runs of ${this.config.name}\n\n| Run | Started | Time | Calls | Cost | Memory | Ended by | Next | Summary |\n|---|---|---|---|---|---|---|---|---|\n${rows.join('\n')}\n`;
   }
 
   async timeline(line: string): Promise<void> {

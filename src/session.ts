@@ -48,7 +48,9 @@ export class Session {
   private runStartedAt = Date.now();
   private runUsage: Usage = { ...NO_USAGE };
   private runUsageKnown = true;
-  private runEnd: Pick<RunFacts, 'ended_at' | 'duration_ms' | 'ended_by' | 'next' | 'summary'> = {};
+  private runEnd: Pick<RunFacts, 'ended_at' | 'duration_ms' | 'ended_by' | 'next' | 'summary' | 'memory_updated'> = {};
+  private memoryAtStart = '';
+  private endRunHeld = false;
   private warned = false;
   private nextPaceAt = 0;
 
@@ -126,8 +128,10 @@ export class Session {
     this.runUsageKnown = true;
     this.runEnd = {};
     this.warned = false;
+    this.endRunHeld = false;
     this.shotCount = 0;
     const run = await this.workspace.startRun(now, `${now.toISOString().slice(0, 10)} ${clockTime(now)}`);
+    this.memoryAtStart = await this.workspace.memoryStamp();
     this.browser.resetLogOrigin();
     await this.browser.launch(this.config.url);
     await this.workspace.log({ type: 'run_start', run, url: this.config.url });
@@ -146,7 +150,15 @@ export class Session {
     if (!this.sealed) await this.saveRun(false);
   }
 
+  /** True the first time end_run is called in a run that hasn't changed /memory: that call doesn't end the run. */
+  async holdEndRun(): Promise<boolean> {
+    if (this.endRunHeld || (await this.workspace.memoryStamp()) !== this.memoryAtStart) return false;
+    this.endRunHeld = true;
+    return true;
+  }
+
   private async saveRun(ledger = true): Promise<void> {
+    if (this.runEnd.ended_at) this.runEnd.memory_updated = (await this.workspace.memoryStamp()) !== this.memoryAtStart;
     await this.workspace.saveRun({
       run: this.run,
       started_at: new Date(this.runStartedAt).toISOString(),

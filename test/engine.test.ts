@@ -118,7 +118,7 @@ describe('engine loop', () => {
   });
 
   test('OpenCode Go style: per-conversation headers, raw reasoning values, no images for a text-only model', async () => {
-    const mock = await mockModel([{ calls: [['look', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] }]);
+    const mock = await mockModel([{ calls: [['look', {}], ['files', { command: 'create', path: '/memory/notes.md', file_text: 'Noted.' }]] }, { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] }]);
     try {
       process.env.TEST_GO_KEY = 'go-key';
       const config = await campaign(mock.url, {

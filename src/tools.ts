@@ -545,10 +545,13 @@ export function createTools(session: Session): Tool[] {
       next: z.enum(['new_run', 'goal_met', 'goal_impossible']),
     }),
     async run({ summary, next }) {
+      if (await session.holdEndRun()) {
+        return [text(`Run ${session.run} has not ended: /memory has not changed during this run. Do the End step (the Outcome, lessons.md, guide.md, README.md's Now), then call end_run again.`)];
+      }
       const ended = await session.endRun(summary, next);
       if (ended) return [text(`Run ${session.run} ended. The campaign is over: ${ended}.`)];
-      if (session.mode === 'mcp') return [text(`Run ${session.run} ended. Run ${session.run + 1} starts with your next call.`)];
-      return [text(`Run ${session.run} ended. End your turn now: run ${session.run + 1} starts in a fresh session.`)];
+      if (session.mode === 'mcp') return [text(`Run ${session.run} ended. Run ${session.run + 1} starts with your next game action.`)];
+      return [text(`Run ${session.run} ended. End your turn: run ${session.run + 1} starts in a fresh session.`)];
     },
   });
 
@@ -584,13 +587,13 @@ export class Toolbox {
   private async run(name: string, args: unknown): Promise<ToolResult> {
     const { session } = this;
     this.calls += 1;
-    if (session.mode === 'mcp') await session.nextRun();
+    if (session.mode === 'mcp' && !WORKSPACE_TOOLS.has(name)) await session.nextRun();
     const counted = session.state === 'running' && !session.sealed;
     if (counted) session.callsThisRun += 1;
     const tool = this.byName.get(name);
     const closed = (): ToolResult | null => {
       if (session.state === 'done' && !ALWAYS_AVAILABLE.has(name)) return fail(`The campaign has ended: ${session.doneReason}.`);
-      if (session.sealed && session.state === 'running' && !ALWAYS_AVAILABLE.has(name)) return fail(`Run ${session.run} has ended. End your turn: the next run starts in a fresh session.`);
+      if (session.sealed && session.state === 'running' && (!WORKSPACE_TOOLS.has(name) || name === 'end_run')) return fail(`Run ${session.run} has ended. End your turn: the next run starts in a fresh session.`);
       return null;
     };
     const limit = async (): Promise<ToolResult | null> => {

@@ -69,7 +69,7 @@ test/             node:test; fixtures/game.html is a small canvas game; fixtures
 
 ```zsh
 ./setup.sh [--skip-tests]                  # setup / health check, safe to re-run
-npm test                                   # 40 tests, ~15-30 s, real headless Chromium
+npm test                                   # 41 tests, ~15-30 s, real headless Chromium
 npm run typecheck                          # tsc --noEmit over src, test, scripts
 node src/cli.ts list | config <c> | status [c] | run <c> | stop <c> | mcp <c>
 node scripts/drive.ts <c> [--headed]       # hand-play driver
@@ -105,6 +105,9 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
 
 **Memory, reporting and the protocol (design §7)**
 - The first real ToME run (Opus) skipped the game's help, invented clock times, thought 15 minutes had passed after 3.4, and ended the campaign with its goal unmet. Structure fixed it, not supervision: templated memory, a run protocol in the prompt, a status line on every result, and framework-written facts.
+- The second run (after the fix) kept good memory and lessons, and it learned across runs, but it never read the game's help under a 30-minute limit. Step 1 now applies whatever the time limit and follows the instructions' Getting started first. The user may give the agent a head start: instructions take Goal / Getting started / Deliverables, and files put in a campaign's `memory/` before its first run are kept.
+- An end point in the game (death, win, game over) ends the run unless the instructions say otherwise, so in roguelikes `runs` counts deaths. If /memory hasn't changed during a run, its first `end_run` is held back with the reason (a file-activity check, not a content judgement); this works for every player, because the API loop discards results after a seal.
+- Sonnet on high effort is the default and the benchmark player.
 - Rules live once, in `src/prompt.ts`. Templates hold headings and one descriptive line; notes and openings name protocol steps instead of restating them.
 - `end_run` seals the run; the driver starts the next (a fresh CLI session or conversation), so a late call can't play the next run. Under `game-r mcp` the next run starts at the next call.
 - Every result ends with the status line; tests' `textOf` drops it. Calls are counted before a tool runs, so every line agrees.

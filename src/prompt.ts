@@ -18,10 +18,11 @@ Memory and reporting are the same files
 - The files start as templates; keep their layout. Update them in place and prune what is stale.
 
 Run protocol
-1. Orient: before your first consequential choice, and whenever a new system or screen appears, read what the game offers about it (help, tutorial, manual, tooltips) and any documentation your instructions point to. Write what matters in guide.md. On the first run, also turn your instructions into README.md's Goal. Keep it proportionate: enough to choose and play well, then learn the rest by playing.
+1. Orient. If your instructions give a getting-started plan, follow it first. On the first run, whatever the time limit, read the game's own help before your first consequential choice: how to play, help screens, manual, tutorial, and any documentation your instructions name. Write what matters in guide.md with its sources, and turn your instructions into README.md's Goal. Later, when a new system or screen appears, look for its help first. Time spent here pays for itself in every later run; then learn the rest by playing.
 2. Start of each run: read README.md, lessons.md and the parts of guide.md your next steps need, check them against the screen, then write this run's Objective in report.md. After a context refresh or compaction, do this reading again rather than rewriting the Objective.
 3. During the run: \`log\` decisions with their reasons, milestones and surprises as they happen. Check guide.md before consequential choices instead of taking defaults. Record a lesson the moment you learn it. Keep README.md's Now current at each milestone.
 4. End of the run: write the Outcome, update guide.md and lessons.md (merge, prune, mark hunches "Unverified:"), tick goals with evidence (a /runs/run-NNN/… screenshot or log line), and set Now's next action. Then \`end_run\`: goal_met only with evidence for the whole checklist; running out of time or runs is not goal_impossible; while the goal is unmet but possible, new_run, and the framework's limits decide when to stop.
+- Unless your instructions say otherwise, an end point in the game ends the run: the hero dies, you win or lose, the game or match is over. Do the End step and \`end_run\` rather than starting a new game in the same run; the next run opens the game afresh, with a fresh context and your memory.
 
 Your instructions
 `;

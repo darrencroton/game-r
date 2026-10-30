@@ -151,11 +151,12 @@ describe('tools against the fixture game', () => {
   test('end_run seals the run; the next starts only when the driver begins it; the run limit ends the campaign', async () => {
     await call('files', { command: 'create', path: '/memory/notes.md', file_text: 'Rocks fall every 500 ms.' });
     let result = await call('end_run', { summary: 'Learned the controls.', next: 'new_run' });
-    assert.match(textOf(result), /Run 1 ended\. End your turn now/);
+    assert.match(textOf(result), /Run 1 ended\. End your turn: run 2 starts in a fresh session/);
     assert.match(textOf(await call('look')), /Run 1 has ended\. End your turn/);
     const facts = JSON.parse(await readFile(path.join(session.workspace.dir, 'run-001', 'run.json'), 'utf8'));
     assert.equal(facts.summary, 'Learned the controls.');
     assert.equal(facts.ended_by, 'end_run');
+    assert.equal(facts.memory_updated, true);
     assert.match(await readFile(path.join(session.workspace.dir, 'ledger.md'), 'utf8'), /\| 1 \| .* \| end_run \| new_run \| Learned the controls\. \|/);
     await session.nextRun();
     assert.equal(session.run, 2);
@@ -164,6 +165,7 @@ describe('tools against the fixture game', () => {
     const transcript = (await readFile(path.join(session.workspace.dir, 'run-001', 'transcript.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(transcript.some((e) => e.type === 'tool' && e.name === 'look' && e.result.some((r: { image?: string }) => r.image === '/run/shots/0001.jpg')));
 
+    await call('files', { command: 'create', path: '/memory/run2.md', file_text: 'Run 2 notes.' });
     result = await call('end_run', { summary: 'Second run.', next: 'new_run' });
     assert.match(textOf(result), /campaign is over: limit reached: 2 runs/);
     assert.equal(session.state, 'done');
@@ -185,14 +187,18 @@ describe('access and clock settings', () => {
     }
   });
 
-  test('reopening a campaign at its limit leaves the last run\'s facts alone', async () => {
+  test('end_run holds once while /memory is unchanged; reopening at the limit leaves the run\'s facts alone', async () => {
     const config = await makeConfig({ limits: { runs: 1 } });
     const first = await Session.open(config, 'mcp');
     await first.begin();
-    await new Toolbox(first).call('end_run', { summary: 'The only run.', next: 'new_run' });
+    const box = new Toolbox(first);
+    assert.match(textOf(await box.call('end_run', { summary: 'The only run.', next: 'new_run' })), /Run 1 has not ended: \/memory has not changed during this run\. Do the End step/);
+    assert.equal(first.sealed, false);
+    assert.match(textOf(await box.call('end_run', { summary: 'The only run.', next: 'new_run' })), /Run 1 ended\. The campaign is over: limit reached: 1 runs\.$/);
     await first.close();
     const facts = path.join(first.workspace.dir, 'run-001', 'run.json');
     const before = await readFile(facts, 'utf8');
+    assert.equal(JSON.parse(before).memory_updated, false);
     const second = await Session.open(config, 'mcp');
     await second.begin();
     await second.close();

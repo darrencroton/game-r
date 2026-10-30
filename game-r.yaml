@@ -11,14 +11,15 @@ defaults:
     #   openai-compatible  game-r's own loop over any Chat Completions API (OpenCode Go, OpenAI, OpenRouter, Ollama…)
     #   anthropic          game-r's own loop over the Claude API (not built yet; see HANDOFF.md)
     provider: claude-code
-    name: opus                       # model id or CLI alias (claude-code: opus | sonnet | haiku | full id); null = the CLI's default
+    name: sonnet                     # model id or CLI alias (claude-code: opus | sonnet | haiku | full id); null = the CLI's default.
+                                     # Sonnet on high effort is the benchmark player.
     command: null                    # agent CLIs: path to the executable when it is not `claude` / `codex` on PATH
     base_url: null                   # openai-compatible: the API's base URL
     api_key_env: null                # openai-compatible / anthropic: name of the key, read from the environment, else from secrets_file
     secrets_file: ./.env             # NAME=value lines, gitignored (copy .env.example); keys stay out of the agent CLIs' environment
     headers: {}                      # openai-compatible: extra request headers; "{conversation}" becomes a per-conversation id
     max_output_tokens: 16000         # openai-compatible / anthropic
-    reasoning: medium                # effort, passed as given (claude-code --effort; codex model_reasoning_effort; reasoning_effort); off = don't send
+    reasoning: high                  # effort, passed as given (claude-code --effort; codex model_reasoning_effort; reasoning_effort); off = don't send
     vision: true                     # false for text-only models: screenshots are saved but not sent
     # USD per million tokens, for cost tracking and limits.cost_usd with API providers. null = not tracked.
     # Agent CLIs report their own figures (Claude Code: an estimate; on a subscription nothing is billed per token).
@@ -57,6 +58,16 @@ defaults:
   system_prompt_file: null           # replace the built-in framework prompt (keep {{clock}} and {{developer}} placeholders)
   output: ./runs
 
+# A campaign's instructions work best in three parts (all plain text, all optional but the goal):
+#   Goal             what to achieve, as checkable criteria
+#   Getting started  a known plan or direction for the opening: what to read first, what usually works.
+#                    The agent follows it before anything else; the rest it learns and records itself.
+#   Deliverables     what to report and where, beyond the framework's own memory and run reports
+# To start a campaign with knowledge (say, the memory of an earlier campaign), put files in
+# runs/<campaign>/memory/ before its first run: on the first run only the missing templates are copied.
+# A run ends at each end point in the game (a death, a win, a game over), so in a roguelike `runs` counts
+# deaths: bound such campaigns by hours, with runs: null.
+
 campaigns:
   # The two example games. They run on the defaults above (Claude Code, Opus) unless they say otherwise.
   tome-ui:
@@ -73,11 +84,15 @@ campaigns:
   tome-barrow:
     url: https://darrencroton.github.io/tales-of-middle-earth/
     browser: { device: "Pixel 7", headless: false }
-    limits: { runs: 3, hours: 0.5 }    # a short sample: usage, cost and how the agent copes; raise to continue
+    limits: { runs: null, hours: 0.5 } # a short sample: usage, cost and how the agent copes; raise to continue
     instructions: |
       Goal: create a new hero and take them to the bottom of the Barrow-downs, the first dungeon
       (dungeon level 10, 500 ft), alive. Play as a phone player would, through the game's own UI.
-      Log depth, character level and hit points at each new dungeon level.
+
+      Getting started: as soon as you are in the game, before doing anything else there, read
+      "How to play" (under the ☰ Menu button) and "Help" (under the More button), and write up what matters.
+
+      Deliverables: log depth, character level and hit points at each new dungeon level.
       Notify me when you reach each new dungeon level, and if the hero dies.
 
   drones-score:

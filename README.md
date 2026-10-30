@@ -67,11 +67,20 @@ subscription's usage limit), game-r waits and retries.
 
 Every option lives in `game-r.yaml`: `defaults` apply to every campaign, and a
 campaign overrides only what it sets. A campaign needs a `url` and
-`instructions`:
+`instructions`.
+
+Instructions work best in three parts. **Goal** is what to achieve, as checkable criteria. **Getting started** is a known plan or direction for the opening, such as what to read first or what usually works; the agent follows it before anything else. **Deliverables** is what to report beyond the framework's own memory and run reports. To start a campaign with knowledge, put files in `runs/<campaign>/memory/` before its first run.
+
+How the agent works through a campaign:
+
+- Each end point in the game (a death, a win, a game over) ends a run. The agent then updates its memory, and the next run starts afresh.
+- In a roguelike, `runs` therefore counts deaths, so bound such a campaign by `hours`.
+- The agent keeps its memory in `/memory`: `README.md` holds the goal checklist, the current state and the plan; `guide.md` describes the game; `lessons.md` holds what it has learned.
+- Each run's report and timeline are in its folder.
 
 ```yaml
 defaults:
-  model: { provider: claude-code, name: opus, reasoning: medium }
+  model: { provider: claude-code, name: sonnet, reasoning: high }   # the benchmark player
   limits: { runs: 10, hours: 24 }
 
 campaigns:

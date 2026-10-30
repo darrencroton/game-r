@@ -175,6 +175,8 @@ async function invoke(drive: Drive, cli: AgentCli, mcp: HttpMcp, prompt: string,
   const watch = setInterval(async () => {
     if (interrupted) return;
     const stop = await drive.stopReason();
+    const limit = session.state === 'running' ? session.limitReached() : null;
+    if (limit) await session.finish(limit).catch((err: Error) => drive.log(`could not finish the campaign: ${err.message}`));
     if (session.state !== 'running' || session.sealed || session.run !== run) endedAt ??= Date.now();
     if (!stop && (endedAt === null || Date.now() - endedAt < FINISH_GRACE_MS)) return;
     interrupted = true;
