@@ -145,7 +145,7 @@ export class Session {
     const { command, on } = this.config.notify;
     await this.workspace.log({ type: 'notify', event, title, message, level });
     if (!command || !on.includes(event)) return command ? `Not sent: "${event}" notifications are off.` : 'Logged. No notify.command is configured.';
-    return new Promise((resolve) => {
+    const result = await new Promise<string>((resolve) => {
       const child = spawn(command, {
         shell: process.env.SHELL || true,
         stdio: 'ignore',
@@ -153,8 +153,10 @@ export class Session {
         env: { ...process.env, GAMER_TITLE: title, GAMER_MESSAGE: message, GAMER_LEVEL: level, GAMER_CAMPAIGN: this.config.name, GAMER_EVENT: event },
       });
       child.on('error', (err) => resolve(`Notification failed: ${err.message}`));
-      child.on('exit', (code) => resolve(code === 0 ? 'Sent.' : `Notification command exited with code ${code}.`));
+      child.on('exit', (code, signal) => resolve(code === 0 ? 'Sent.' : code === null ? `Notification command was stopped (${signal}; 15 s limit).` : `Notification command exited with code ${code}.`));
     });
+    if (result !== 'Sent.') await this.workspace.log({ type: 'notify_failed', event, result });
+    return result;
   }
 
   async saveStatus(extra: Record<string, unknown> = {}): Promise<void> {

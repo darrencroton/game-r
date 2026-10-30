@@ -90,8 +90,7 @@ game-r.yaml ──► game-r run <campaign>
 ## 4. Configuration — one file
 
 All user options and directions live in **`game-r.yaml`**. `defaults` apply to
-every campaign; each campaign overrides only what differs. API keys stay in
-environment variables, named in the config, never written into it.
+every campaign; each campaign overrides only what differs. API keys are never written into it: the config names a key (`model.api_key_env`), and game-r reads it from the environment or the gitignored `.env` file (`model.secrets_file`).
 
 The commented file in the repository, [`game-r.yaml`](../game-r.yaml), is the
 reference: every option with its default, and three example campaigns (ToME

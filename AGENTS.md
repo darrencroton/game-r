@@ -23,7 +23,7 @@ Read these first:
 - **Game-agnostic.** Nothing in `src/` knows about a particular game. Game
   knowledge goes in a campaign's `instructions`.
 - **All user options in `game-r.yaml`**, with comments and defaults. API keys
-  only through environment variables named in the config.
+  never in it: named in the config, read from the environment or `.env`.
 - **Self-contained runs on disk** (`runs/<campaign>/`), so campaigns run side by
   side. Local only.
 - **Autonomous with notifications** (`notify.command`). Live steering is future
@@ -32,9 +32,13 @@ Read these first:
   ChatGPT (through Codex), plus an OpenCode Go API key. API-key providers are
   secondary.
 - **Never install packages without asking.** Approved so far: `playwright`
-  (pinned 1.63.0), `@modelcontextprotocol/sdk`, `zod`, `yaml`.
+  (pinned 1.63.0), `@modelcontextprotocol/sdk`, `zod`, `yaml`; dev:
+  `typescript` (7.0.2), `@types/node` (22.x, matching the oldest supported Node).
   `@anthropic-ai/sdk` was asked about and deferred (only needed for the
   Anthropic API provider).
+- **Secrets in `.env`** (gitignored), read by `apiKey()` for `model.api_key_env`
+  without touching `process.env`; an environment variable wins. Never print it.
+- **New users run `./setup.sh`.** Keep it working when setup needs change.
 - Writing: UK English; concise; headings and tables. Code comments say what
   the code does, not why, and stay sparse. The user is on macOS (zsh), in
   Melbourne.
@@ -55,27 +59,24 @@ src/engine.ts     `game-r run`: shared set-up, stop and errors; the model loop (
 src/agent.ts      `game-r run` with an agent CLI: claude-code (`claude -p`) or codex (`codex exec`) playing over HTTP MCP
 src/model.ts      provider interface, retries, cost, createProvider
 src/openai.ts     OpenAI-compatible Chat Completions provider (fetch); headers, vision switch
+scripts/drive.ts  hand-play driver: one Session's tools over loopback HTTP (see *Playing hands-on*)
+setup.sh          one-step, re-runnable setup for new users (deps, Chromium, .env, players, config, checks)
 test/             node:test; fixtures/game.html is a small canvas game; fixtures/fake-agent.mjs fakes both CLIs
 ```
 
 ## Commands
 
 ```zsh
-npm test                                   # 34 tests, ~30 s, real headless Chromium
-npx tsc --noEmit                           # needs typescript (not a dependency; see below)
+./setup.sh [--skip-tests]                  # setup / health check, safe to re-run
+npm test                                   # 35 tests, ~10-30 s, real headless Chromium
+npm run typecheck                          # tsc --noEmit over src, test, scripts
 node src/cli.ts list | config <c> | status [c] | run <c> | stop <c> | mcp <c>
-```
-
-In the Claude cloud environment TypeScript is installed globally but
-`@types/node` lives elsewhere, so typecheck with:
-
-```zsh
-tsc --noEmit -p . --typeRoots /opt/node-tools/node_modules/@types
+node scripts/drive.ts <c> [--headed]       # hand-play driver
 ```
 
 ## Code conventions
 
-- **Node runs the `.ts` sources directly** (type stripping, Node ≥ 22.18). So:
+- **Node runs the `.ts` sources directly** (type stripping: Node 22.18+ or 23.6+). So:
   no parameter properties, enums or namespaces (`erasableSyntaxOnly` in
   `tsconfig.json` catches them); imports use `.ts` extensions; no build step.
 - **zod schemas are the single source** for tool inputs: MCP takes them
@@ -181,6 +182,14 @@ tsc --noEmit -p . --typeRoots /opt/node-tools/node_modules/@types
 - `events.once(child, 'close')` rejects when the child emits `error` (for
   example ENOENT); `src/agent.ts` uses its own `finished()` helper.
 
+**The user's Mac (local sessions, from 2026-10-30)**
+- Repo at `~/Local/git-repos/game-r`; work on `main` for now (the user's call).
+- Chromium is in the default Playwright cache; `setup.sh` installs it only if
+  missing. `claude`, `codex` (signed in with ChatGPT) and `opencode` are on PATH.
+- `ping-me "<msg>"` sends the user an iMessage; it is the notify command.
+- Long runs: `caffeinate -i node src/cli.ts run <c>` so the Mac doesn't sleep.
+- `browser.headless: false` (or `drive.ts --headed`) shows the game window.
+
 **The cloud environment (Claude Code on the web)**
 - Playwright's browsers are preinstalled at `/opt/pw-browsers`
   (`PLAYWRIGHT_BROWSERS_PATH`). Never run `playwright install`; keep
@@ -205,39 +214,15 @@ tsc --noEmit -p . --typeRoots /opt/node-tools/node_modules/@types
 
 ## Playing hands-on from a session
 
-`game-r mcp` serves the tools to an MCP client, but a cloud session can't add
-an MCP server to itself. To play through the exact same tools from Bash, run a
-throwaway driver from the scratchpad that keeps one `Session` open and serves
-`Toolbox.call` over local HTTP, saving images to files you can view:
-
-```ts
-import http from 'node:http';
-import { writeFileSync } from 'node:fs';
-import { Session } from '/home/user/game-r/src/session.ts';
-import { Toolbox } from '/home/user/game-r/src/tools.ts';
-import { loadConfig } from '/home/user/game-r/src/config.ts';
-const s = await Session.open(await loadConfig('/home/user/game-r/game-r.yaml', process.argv[2]!), 'mcp');
-const box = new Toolbox(s);
-await s.begin();
-let n = 0;
-http.createServer(async (req, res) => {
-  let body = '';
-  for await (const c of req) body += c;
-  const { tool, args } = JSON.parse(body);
-  const r = await box.call(tool, args);
-  res.end(r.content.map((c) => {
-    if (c.type === 'text') return c.text;
-    const f = `${import.meta.dirname}/view-${++n}.jpg`;
-    writeFileSync(f, Buffer.from(c.data, 'base64'));
-    return `[image ${f}]`;
-  }).join('\n'));
-}).listen(8799, '127.0.0.1');
-```
+`game-r mcp` serves the tools to an MCP client, but a session can't add an MCP server to itself. To play through exactly the same tools from Bash, run `scripts/drive.ts`: it keeps one `Session` open, serves `Toolbox.call` over loopback HTTP, and saves result images to files you can view. It writes to `runs/<campaign>-hand/` with no limits, so the campaign's own memory and limits are untouched.
 
 ```zsh
-node driver.ts tome-ui &   # then:
+node scripts/drive.ts tome-ui --headed --out <scratchpad>/tome &   # then:
 curl -s localhost:8799 -d '{"tool":"look","args":{"grid":true}}'
+curl -s localhost:8799 -d '{"tool":"act","args":{"actions":[{"do":"click","at":"F7"}]}}'
 ```
+
+Add `--notify` to let `notify` and `end_run` send real notifications (off by default). Requests carrying an `Origin` header (from web pages) are refused. Stop it with `kill <pid>` (find it with `ps -eo pid,args | grep "[d]rive.ts"`); it closes the session cleanly on SIGTERM.
 
 ## The example games
 

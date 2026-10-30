@@ -11,6 +11,7 @@ const ModelSchema = z.object({
   command: z.string().nullable().default(null),
   base_url: z.string().nullable().default(null),
   api_key_env: z.string().nullable().default(null),
+  secrets_file: z.string().nullable().default('./.env'),
   headers: z.record(z.string(), z.string()).default({}),
   max_output_tokens: z.number().int().positive().default(16000),
   reasoning: z.string().default('medium'),
@@ -120,6 +121,7 @@ export function resolveCampaign(file: z.infer<typeof FileSchema>, name: string, 
   if (!result.success) throw new ConfigError(`Campaign "${name}":\n${formatIssues(result.error)}`);
   const config = result.data;
   config.output = path.resolve(baseDir, config.output);
+  if (config.model.secrets_file) config.model.secrets_file = path.resolve(baseDir, config.model.secrets_file);
   if (config.system_prompt_file) config.system_prompt_file = path.resolve(baseDir, config.system_prompt_file);
   if (!/^[a-z][a-z0-9+.-]*:/i.test(config.url)) config.url = new URL(`file://${path.resolve(baseDir, config.url)}`).href;
   return config;

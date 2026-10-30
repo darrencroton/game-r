@@ -176,6 +176,13 @@ describe('access and clock settings', () => {
       const result = await new Toolbox(session).call('notify', { title: 'Hi; rm -rf /', message: '$(whoami)', level: 'finding' });
       assert.equal(textOf(result), 'Sent.');
       assert.equal(await readFile(out, 'utf8'), 'Hi; rm -rf /|$(whoami)|finding');
+      await session.workspace.startRun();
+      session.config.notify.command = 'exit 3';
+      assert.match(textOf(await new Toolbox(session).call('notify', { title: 'Hi', message: 'x' })), /exited with code 3/);
+      await session.notify('run_end', 'Run 1 ended', 'x');
+      const failed = (await readFile(path.join(session.workspace.runDir, 'transcript.jsonl'), 'utf8')).split('\n').filter((l) => l.includes('"notify_failed"'));
+      assert.equal(failed.length, 2);
+      assert.match(failed[1]!, /"event":"run_end"/);
     } finally {
       await session.close();
     }

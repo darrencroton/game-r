@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { parseEnv } from 'node:util';
 import type { Config } from './config.ts';
 import type { Content, ToolResult } from './tools.ts';
 
@@ -54,10 +56,28 @@ export async function createProvider(model: Config['model']): Promise<Provider> 
   throw new FatalModelError('The anthropic provider is not built yet (it needs @anthropic-ai/sdk; see HANDOFF.md). Use provider: openai-compatible meanwhile.');
 }
 
+/** Reads one NAME=value entry from a secrets file; a missing file reads as empty. */
+function readSecret(file: string, name: string): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw new FatalModelError(`Cannot read ${file} (model.secrets_file): ${(err as Error).message}`);
+  }
+  // parseEnv reads "A= " followed by "B=x" as A="B=x", so trailing blanks are trimmed first.
+  return parseEnv(text.replace(/[ \t]+$/gm, ''))[name];
+}
+
+/** The API key: the environment variable named by api_key_env, else that name in the secrets file. */
 export function apiKey(model: Config['model']): string | null {
-  if (!model.api_key_env) return null;
-  const key = process.env[model.api_key_env];
-  if (!key) throw new FatalModelError(`Set the ${model.api_key_env} environment variable (model.api_key_env), or set api_key_env: null for a server that needs no key.`);
+  const name = model.api_key_env;
+  if (!name) return null;
+  const key = process.env[name] || (model.secrets_file ? readSecret(model.secrets_file, name) : undefined);
+  if (!key) {
+    const where = model.secrets_file ? `Add ${name}=… to ${model.secrets_file} (model.secrets_file) or set the ${name} environment variable` : `Set the ${name} environment variable`;
+    throw new FatalModelError(`${where}, or set api_key_env: null for a server that needs no key.`);
+  }
   return key;
 }
 

@@ -7,53 +7,18 @@ and lessons), then this file. The design is `docs/MCP-DESIGN.md`.
 
 ## Instructions to human
 
-Do these before starting the next cloud session. Each one is independent: skip
-any you don't need yet.
+Work now happens locally on the user's Mac (from 2026-10-30), on `main`.
 
-All the settings below are in this environment's settings: the cloud
-environment menu in the session's title bar, then **Edit**
-([docs](https://code.claude.com/docs/en/cloud-environments#network-access)).
-
-1. **Network access.** Under the *Limited* level, add these to *Allowed domains*
-   (leave *Allow package managers* ticked):
-
-   | Domain | Needed for |
-   |---|---|
-   | `*.github.io` | Both example games (ToME, Battle Drones) |
-   | `opencode.ai` | OpenCode Go (its API) |
-   | `chatgpt.com`, `auth.openai.com`, `api.openai.com` | Codex on your ChatGPT subscription (login and model calls) |
-   | `developers.openai.com` | Optional: Codex documentation, so the session can check flags |
-
-2. **Claude subscription.** Nothing to do for cloud sessions: a nested
-   `claude -p` already runs on your subscription there (tested). On your Mac,
-   `claude auth login` once. For unattended runs on another machine,
-   `claude setup-token` gives a one-year token to set as
-   `CLAUDE_CODE_OAUTH_TOKEN` there.
-
-3. **Codex (ChatGPT subscription).**
-   - Add `npm install -g @openai/codex` to the environment's **Setup script**,
-     so new sessions have the `codex` command (or tell the next session it may
-     install it).
-   - Sign-in happens inside the session: ask Claude to run
-     `codex login --device-auth`. It will give you a link and a code. Open the
-     link on your phone or computer, sign in with ChatGPT and enter the code.
-     If ChatGPT asks you to allow device-code sign-in for Codex, allow it.
-     Each new cloud container needs this once.
-
-4. **OpenCode Go.** Add your key as an environment variable named
-   `OPENCODE_API_KEY` in the environment's settings. Don't paste it into the
-   chat.
-
-5. **Start the next session** on this repository (branch `main`) with:
-
-   > Read HANDOFF.md and AGENTS.md, then work through "Next steps" with me:
-   > first the hand-played tests, then fixes, then a live campaign.
+1. **Setup:** `./setup.sh` (re-runnable). It installs everything, creates `.env` and checks the players and config.
+2. **OpenCode Go key:** put `OPENCODE_API_KEY=…` in `.env` (gitignored, mode 600). Don't paste it into the chat.
+3. **Signed in already:** Claude Code (claude.ai) and Codex (ChatGPT). Re-check with `./setup.sh --skip-tests`.
+4. **Cloud sessions** (if used again): the previous version of this file (git history) has the network allow-list and Codex device sign-in steps.
 
 ---
 
 ## Where things stand
 
-Merged to `main`. 34 tests pass (`npm test`, about 30 s); typecheck clean.
+Merged to `main`. 35 tests pass (`npm test`, about 30 s); typecheck clean.
 
 | Part | State |
 |---|---|
@@ -86,14 +51,14 @@ Merged to `main`. 34 tests pass (`npm test`, about 30 s); typecheck clean.
 
 ## Next steps, in order
 
-1. **Check access.** Run `curl -sI https://simonw.github.io/battledrones/`,
+1. **Check access.** *Done locally 2026-10-30: both github.io games reachable, Codex signed in; OpenCode key pending in `.env`.* Run `curl -sI https://simonw.github.io/battledrones/`,
    `curl -sI https://darrencroton.github.io/tales-of-middle-earth/` and
    `curl -s https://opencode.ai/inference/go/v1/models -H "Authorization: Bearer $OPENCODE_API_KEY" | head`.
    Also `codex --version`, and `codex login --device-auth` if it isn't signed
    in (relay the link and code to the user). Report anything still blocked.
 
-2. **Hand-played tests of the tools.** Use the driver in `AGENTS.md` →
-   *Playing hands-on from a session*. Play `tome-ui` and `drones-score` a
+2. **Hand-played tests of the tools.** Use `scripts/drive.ts` (`AGENTS.md` →
+   *Playing hands-on from a session*). Play `tome-ui` and `drones-score` a
    little each, with `browser {device}` on desktop and phone. Look for what the
    tools get wrong on real games and fix it generically. Things to check:
    - **read_page:** is it readable on these pages (size, noise)?

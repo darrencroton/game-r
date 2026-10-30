@@ -1,6 +1,7 @@
 # game-r.yaml — every user option lives here.
 # `defaults` apply to every campaign; a campaign overrides only what it sets.
-# Secrets never go in this file: API keys are read from the environment variable named in model.api_key_env.
+# Secrets never go in this file: API keys are read from the environment variable named in model.api_key_env,
+# or from the gitignored secrets file (model.secrets_file, ./.env by default).
 
 defaults:
   model:
@@ -13,7 +14,8 @@ defaults:
     name: opus                       # model id or CLI alias (claude-code: opus | sonnet | haiku | full id); null = the CLI's default
     command: null                    # agent CLIs: path to the executable when it is not `claude` / `codex` on PATH
     base_url: null                   # openai-compatible: the API's base URL
-    api_key_env: null                # openai-compatible / anthropic: environment variable holding the key
+    api_key_env: null                # openai-compatible / anthropic: name of the key, read from the environment, else from secrets_file
+    secrets_file: ./.env             # NAME=value lines, gitignored (copy .env.example); keys stay out of the agent CLIs' environment
     headers: {}                      # openai-compatible: extra request headers; "{conversation}" becomes a per-conversation id
     max_output_tokens: 16000         # openai-compatible / anthropic
     reasoning: medium                # effort, passed as given (claude-code --effort; codex model_reasoning_effort; reasoning_effort); off = don't send
@@ -41,9 +43,10 @@ defaults:
     cost_usd: null                   # needs price_per_mtok (API providers) or a CLI that reports cost
     turns_per_run: null              # model turns (API providers) or tool calls (agent CLIs) per run
   notify:
-    # Run with $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_EVENT $GAMER_CAMPAIGN set. macOS example:
+    # Run with $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_EVENT $GAMER_CAMPAIGN set; refer to them, never paste game text in.
+    # ping-me is the owner's iMessage script; a failure is logged in the transcript (notify_failed). macOS alternative:
     # command: osascript -e 'display notification (system attribute "GAMER_MESSAGE") with title (system attribute "GAMER_TITLE")'
-    command: null
+    command: 'ping-me "$GAMER_TITLE: $GAMER_MESSAGE"'
     on: [agent, run_end, campaign_end, limit, error]
   system_prompt_file: null           # replace the built-in framework prompt (keep {{clock}} and {{developer}} placeholders)
   output: ./runs

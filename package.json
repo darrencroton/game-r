@@ -9,10 +9,12 @@
     "game-r": "src/cli.ts"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": "^22.18 || >=23.6"
   },
   "scripts": {
+    "setup": "./setup.sh",
     "game-r": "node src/cli.ts",
+    "drive": "node scripts/drive.ts",
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
@@ -21,5 +23,9 @@
     "playwright": "1.63.0",
     "yaml": "2.9.1",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2"
   }
 }

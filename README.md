@@ -30,20 +30,22 @@ it learned in the last.
 
 ## Quick start
 
-Requirements: Node.js 22.18 or newer, Playwright's Chromium, and whichever
+Requirements: Node.js 22.18+ (or 23.6+), Playwright's Chromium, and whichever
 player you want to use:
 
 | Player (`model.provider`) | Needs |
 |---|---|
 | `claude-code` (default) | [Claude Code](https://code.claude.com/docs) signed in with your Claude subscription (`claude auth login`) |
 | `codex` | [Codex CLI](https://github.com/openai/codex) (`npm install -g @openai/codex`) signed in with ChatGPT (`codex login`) |
-| `openai-compatible` | An API key in the environment variable named by `model.api_key_env`, e.g. `OPENCODE_API_KEY` for OpenCode Go |
+| `openai-compatible` | An API key named by `model.api_key_env` (e.g. `OPENCODE_API_KEY` for OpenCode Go), in `.env` or the environment |
 
 ```zsh
-npm install
-npx playwright install chromium
-npm test
+./setup.sh                             # or: npm run setup
 ```
+
+The setup script is safe to run again at any time. It checks Node, installs the locked npm packages and Playwright's Chromium (skipped if already there), creates `.env` from [`.env.example`](.env.example), reports which players are installed and signed in, validates `game-r.yaml`, checks the notify command, and runs the typecheck and tests (`--skip-tests` skips those).
+
+**API keys** go in `.env` (gitignored, created with mode 600) as `NAME=value` lines, e.g. `OPENCODE_API_KEY=…`. game-r reads the entry named by a campaign's `model.api_key_env` from there, unless an environment variable of that name is set. Keys read from the file are never put in the environment, so the agent CLIs and the notify command don't inherit them. `model.secrets_file` points somewhere else.
 
 Edit [`game-r.yaml`](game-r.yaml), then:
 
@@ -108,12 +110,14 @@ turns per run) and a notification command.
 
 **Notifications.** `notify.command` runs a shell command with the message in
 environment variables (`GAMER_TITLE`, `GAMER_MESSAGE`, `GAMER_LEVEL`,
-`GAMER_EVENT`, `GAMER_CAMPAIGN`). On macOS:
+`GAMER_EVENT`, `GAMER_CAMPAIGN`). Refer to them inside the command; never paste game text into it. The checked-in config uses the owner's `ping-me` iMessage script; change it to your own, e.g. a macOS notification:
 
 ```yaml
 notify:
   command: osascript -e 'display notification (system attribute "GAMER_MESSAGE") with title (system attribute "GAMER_TITLE")'
 ```
+
+**Long campaigns on a laptop.** Keep it on power and stop it sleeping: `caffeinate -i node src/cli.ts run tome-ui` on macOS.
 
 ## What the agent gets
 
@@ -159,7 +163,8 @@ again continues it with a new run; its limits are cumulative.
 
 ```zsh
 npm test                      # node:test with real headless Chromium
-npx tsc --noEmit              # typecheck (TypeScript is not a dependency)
+npm run typecheck             # tsc --noEmit (TypeScript is a dev dependency)
+node scripts/drive.ts dodge --headed   # play by hand through the agent's tools (see AGENTS.md)
 ```
 
 The sources are TypeScript run directly by Node (no build step). Read
