@@ -1,8 +1,10 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
-import { deviceNames, isProblem, type Point } from './browser.ts';
-import type { Session } from './session.ts';
+import { AGENT_CLIS } from './config.ts';
+import { deviceNames, isProblem, readDocument, type Point } from './browser.ts';
+import { clockTime, span, type Session } from './session.ts';
 
 export type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: 'image/jpeg'; file: string };
 
@@ -28,10 +30,6 @@ function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function duration(ms: number): string {
-  const m = Math.floor(ms / 60_000);
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-}
 
 type ImageContent = Extract<Content, { type: 'image' }>;
 
@@ -44,8 +42,24 @@ async function pageLine(session: Session): Promise<string> {
   const { browser } = session;
   const page = browser.page;
   const vp = page.viewportSize();
-  const clock = session.config.clock === 'allowed' ? ` · clock ${browser.paused ? 'paused' : 'running'} at ${seconds(await browser.gameTime())}` : '';
-  return `${page.url()} · "${await page.title()}" · viewport ${vp?.width}×${vp?.height} css px · ${browser.device}${browser.orientation === 'landscape' ? ' landscape' : ''}${browser.hasTouch ? ' (touch)' : ''}${clock}`;
+  return `${page.url()} · "${await page.title()}" · viewport ${vp?.width}×${vp?.height} css px · ${browser.device}${browser.orientation === 'landscape' ? ' landscape' : ''}${browser.hasTouch ? ' (touch)' : ''}`;
+}
+
+/** The line that ends every result: local time, run, time and calls against the limits, game time, and any wrap-up warning. */
+export async function statusLine(session: Session): Promise<string> {
+  const { config, browser } = session;
+  const { limits } = config;
+  const parts = [`⏱ ${clockTime()}`, `run ${session.run}${limits.runs !== null ? ` of ${limits.runs}` : ''}${session.sealed ? ' (ended)' : ''}`];
+  parts.push(`${span(session.runElapsedMs)} in run`);
+  parts.push(`${session.callsThisRun} calls${limits.calls_per_run !== null ? ` of ${limits.calls_per_run}` : ''}`);
+  parts.push(`campaign ${span(session.elapsedMs)}${limits.hours !== null ? ` of ${span(limits.hours * 3_600_000)}` : ''}`);
+  if (limits.cost_usd !== null) parts.push(`$${session.usage.cost_usd.toFixed(2)} of $${limits.cost_usd}${(AGENT_CLIS as readonly string[]).includes(config.model.provider) ? ' (as of the last session)' : ''}`);
+  if (config.clock === 'allowed' && session.state === 'running' && !session.sealed) {
+    const game = await Promise.race([browser.gameTime().catch(() => null), sleep(1000).then(() => null)]);
+    if (game !== null) parts.push(`game ${seconds(game)}${browser.paused ? ' paused' : ''}`);
+  }
+  const warning = session.state === 'running' ? await session.warning() : null;
+  return parts.join(' · ') + (warning ? `\n${warning}` : '');
 }
 
 // ---------- act ----------
@@ -119,6 +133,15 @@ async function gesture(session: Session, from: Point, to: Point, ms: number, fin
     await mouse.move(p.x, p.y);
   }
   await mouse.up();
+}
+
+/** http(s), or a file beside the game when the game itself is a local file; nothing else on this machine. */
+function allowedUrl(session: Session, url: string): string {
+  const target = new URL(url, session.browser.page.url());
+  if (target.protocol === 'http:' || target.protocol === 'https:') return target.href;
+  const game = new URL(session.config.url);
+  if (target.protocol === 'file:' && game.protocol === 'file:' && target.pathname.startsWith(game.pathname.slice(0, game.pathname.lastIndexOf('/') + 1))) return target.href;
+  throw new Error(`goto can open http(s) URLs${game.protocol === 'file:' ? ' and files beside the game' : ''}, not ${url}`);
 }
 
 async function runAction(session: Session, a: Action): Promise<string | void> {
@@ -213,7 +236,7 @@ async function runAction(session: Session, a: Action): Promise<string | void> {
       await browser.wait(need(a.ms, 'ms'));
       return;
     case 'goto':
-      await page.goto(need(a.url, 'url'), { waitUntil: 'load', timeout: 60_000 });
+      await page.goto(allowedUrl(session, need(a.url, 'url')), { waitUntil: 'load', timeout: 60_000 });
       return;
     case 'reload':
       await page.reload({ waitUntil: 'load', timeout: 60_000 });
@@ -287,21 +310,29 @@ export function createTools(session: Session): Tool[] {
     description:
       'Accessibility snapshot of the page: roles, names, text and refs like [ref=e12] to target with act. ' +
       'Best for menus, dialogs, HUD text and forms; canvas content is not described (use look). ' +
-      'boxes adds [box=x,y,w,h] in CSS px. find keeps only lines containing that text (case-insensitive).',
+      'boxes adds [box=x,y,w,h] in CSS px. find keeps only lines containing that text (case-insensitive). ' +
+      'url reads a documentation or help page (http/https) as plain text in a separate browser, leaving the game as it is.',
     input: z.strictObject({
       boxes: z.boolean().optional(),
       find: z.string().optional(),
       depth: z.number().int().positive().optional(),
+      url: z.string().optional(),
     }),
-    async run({ boxes, find, depth }) {
-      let snap = await browser.page.ariaSnapshot({ mode: 'ai', boxes: boxes ?? false, depth, timeout: 20_000 });
-      if (!snap.trim()) snap = '(The accessibility tree is empty: what is on screen is probably all canvas. Use look.)';
-      else if (find) {
+    async run({ boxes, find, depth, url }) {
+      const filter = (body: string) => {
+        if (!find) return body;
         const needle = find.toLowerCase();
-        const hits = snap.split('\n').filter((l) => l.toLowerCase().includes(needle));
-        snap = hits.length ? hits.join('\n') : `No lines contain "${find}".`;
+        const hits = body.split('\n').filter((l) => l.toLowerCase().includes(needle));
+        return hits.length ? hits.join('\n') : `No lines contain "${find}".`;
+      };
+      if (url) {
+        const doc = await readDocument(config.browser.engine, url);
+        const body = filter(doc);
+        return [text(`${url} · ${doc.length.toLocaleString()} characters${body.length > MAX_TEXT ? ' (use find to narrow it)' : ''}\n${body}`)];
       }
-      return [text(`${await pageLine(session)}\n${snap}`)];
+      const snap = await browser.page.ariaSnapshot({ mode: 'ai', boxes: boxes ?? false, depth, timeout: 20_000 });
+      const body = snap.trim() ? filter(snap) : '(The accessibility tree is empty: what is on screen is probably all canvas. Use look.)';
+      return [text(`${await pageLine(session)}\n${body}`)];
     },
   });
 
@@ -437,8 +468,7 @@ export function createTools(session: Session): Tool[] {
   tools.push({
     name: 'files',
     description:
-      'Your workspace. /memory is yours and persists across runs and context refreshes: keep it organised and current. ' +
-      '/run is this run (write logs, reports, findings there). /runs holds every run of this campaign, read-only. ' +
+      'Your workspace: /memory (kept across runs), /run (this run), /runs (every run of this campaign, read-only). ' +
       'Commands: view {path, view_range?} (directories list their contents) · create {path, file_text} · ' +
       'str_replace {path, old_str, new_str} (old_str must be unique) · insert {path, insert_line, insert_text} · delete {path} · rename {old_path, new_path}.',
     input: z.strictObject({
@@ -473,26 +503,22 @@ export function createTools(session: Session): Tool[] {
 
   tools.push({
     name: 'status',
-    description: 'Elapsed wall time, run number, turns, tokens, cost and the hard limits with what remains.',
+    description: 'The campaign state, tokens and cost. (Every result already ends with the status line: time, run, time and calls against the limits, game time.)',
     input: z.strictObject({}),
     async run() {
-      const { limits } = config;
-      const left = (used: number, limit: number | null, fmt: (n: number) => string) => (limit === null ? 'no limit' : `limit ${fmt(limit)}, ${fmt(Math.max(0, limit - used))} left`);
       const u = session.usage;
-      const lines = [
-        `Campaign ${config.name} · ${session.state}${session.doneReason ? ` (${session.doneReason})` : ''} · now ${new Date().toISOString()}`,
-        `Run ${session.run} (${left(session.run, limits.runs, String)})`,
-        `Wall time: campaign ${duration(session.elapsedMs)} (${left(session.elapsedMs, limits.hours === null ? null : limits.hours * 3_600_000, duration)}) · this run ${duration(session.runElapsedMs)}`,
-      ];
-      if (session.mode === 'engine') {
-        lines.push(
-          `Turns: ${session.turnsThisRun} this run (${left(session.turnsThisRun, limits.turns_per_run, String)}) · ${u.turns} in total`,
-          `Tokens: ${u.input_tokens.toLocaleString()} in, ${u.output_tokens.toLocaleString()} out · ` +
-            (config.model.price_per_mtok ? `cost $${u.cost_usd.toFixed(2)} (${left(u.cost_usd, limits.cost_usd, (n) => `$${n.toFixed(2)}`)})` : 'cost not tracked (no model.price_per_mtok)'),
-        );
-      } else lines.push('Turns, tokens and cost are not tracked when playing through MCP.');
-      if (config.clock === 'allowed' && session.state === 'running') lines.push(`Clock: ${browser.paused ? 'paused' : 'running'} · game time ${seconds(await browser.gameTime())}`);
-      return [text(lines.join('\n'))];
+      const cost = session.mode === 'mcp' ? 'tokens and cost are not tracked when playing through MCP' : `${u.input_tokens.toLocaleString()} tokens in, ${u.output_tokens.toLocaleString()} out · $${u.cost_usd.toFixed(2)}`;
+      return [text(`${config.name} · ${session.state}${session.doneReason ? ` (${session.doneReason})` : ''} · ${cost}`)];
+    },
+  });
+
+  tools.push({
+    name: 'log',
+    description: "Add a line to this run's timeline, /run/log.md, stamped with the time. For decisions and their reasons, milestones and surprises.",
+    input: z.strictObject({ text: z.string().min(1).max(2000) }),
+    async run({ text: entry }) {
+      await session.timeline(entry);
+      return [text('Logged.')];
     },
   });
 
@@ -512,23 +538,27 @@ export function createTools(session: Session): Tool[] {
   tools.push({
     name: 'end_run',
     description:
-      'End this run. Before calling, record in /memory what you learned and what to try next. ' +
-      'next "new_run" starts a fresh run (the page reopens at the game URL; /memory carries over); "done" ends the campaign.',
+      'End this run. new_run: another run follows within the limits (the game reopens at its URL; /memory carries over). ' +
+      'goal_met or goal_impossible: end the campaign.',
     input: z.strictObject({
-      summary: z.string().min(1).max(4000),
-      next: z.enum(['new_run', 'done']),
+      summary: z.string().min(1).max(500).describe('One or two sentences for the ledger.'),
+      next: z.enum(['new_run', 'goal_met', 'goal_impossible']),
     }),
     async run({ summary, next }) {
       const ended = await session.endRun(summary, next);
-      if (ended) return [text(`Run ended. The campaign is over: ${ended}.`)];
-      return [text(`Run ended. Run ${session.run} has started at ${config.url}.`), await image(session, await browser.screenshot({}))];
+      if (ended) return [text(`Run ${session.run} ended. The campaign is over: ${ended}.`)];
+      if (session.mode === 'mcp') return [text(`Run ${session.run} ended. Run ${session.run + 1} starts with your next call.`)];
+      return [text(`Run ${session.run} ended. End your turn now: run ${session.run + 1} starts in a fresh session.`)];
     },
   });
 
   return tools;
 }
 
-const ALWAYS_AVAILABLE = new Set(['status', 'files']);
+/** Still available after the run or the campaign has ended. */
+const ALWAYS_AVAILABLE = new Set(['status', 'files', 'log']);
+/** Never paced. */
+const WORKSPACE_TOOLS = new Set([...ALWAYS_AVAILABLE, 'notify', 'end_run']);
 
 export class Toolbox {
   readonly tools: Tool[];
@@ -542,21 +572,45 @@ export class Toolbox {
     this.byName = new Map(this.tools.map((t) => [t.name, t]));
   }
 
-  async call(name: string, args: unknown): Promise<ToolResult> {
+  private queue: Promise<unknown> = Promise.resolve();
+
+  /** Runs one tool call at a time: the browser is stateful, and runs start and end between calls. */
+  call(name: string, args: unknown): Promise<ToolResult> {
+    const next = this.queue.then(() => this.run(name, args));
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  private async run(name: string, args: unknown): Promise<ToolResult> {
     const { session } = this;
     this.calls += 1;
+    if (session.mode === 'mcp') await session.nextRun();
+    const counted = session.state === 'running' && !session.sealed;
+    if (counted) session.callsThisRun += 1;
     const tool = this.byName.get(name);
+    const closed = (): ToolResult | null => {
+      if (session.state === 'done' && !ALWAYS_AVAILABLE.has(name)) return fail(`The campaign has ended: ${session.doneReason}.`);
+      if (session.sealed && session.state === 'running' && !ALWAYS_AVAILABLE.has(name)) return fail(`Run ${session.run} has ended. End your turn: the next run starts in a fresh session.`);
+      return null;
+    };
+    const limit = async (): Promise<ToolResult | null> => {
+      const reached = session.state === 'running' ? session.limitReached() : null;
+      if (!reached) return null;
+      await session.finish(reached);
+      return closed();
+    };
     let result: ToolResult;
     if (!tool) result = fail(`Unknown tool "${name}".`);
-    else if (session.state === 'done' && !ALWAYS_AVAILABLE.has(name)) result = fail(`The campaign has ended: ${session.doneReason}.`);
     else {
-      const limit = session.state === 'running' ? session.limitReached() : null;
-      if (limit) {
-        await session.finish(limit);
-        result = fail(`The campaign has ended: ${limit}.`);
-      } else {
-        const parsed = tool.input.safeParse(args ?? {});
-        if (!parsed.success) result = fail(`Invalid arguments for ${name}:\n${parsed.error.issues.map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`).join('\n')}`);
+      const parsed = tool.input.safeParse(args ?? {});
+      if (!parsed.success) result = fail(`Invalid arguments for ${name}:\n${parsed.error.issues.map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`).join('\n')}`);
+      else {
+        let refused = closed() ?? (await limit());
+        if (!refused && !WORKSPACE_TOOLS.has(name) && !(name === 'read_page' && parsed.data.url)) {
+          await session.pace();
+          refused = closed() ?? (await limit());
+        }
+        if (refused) result = refused;
         else {
           try {
             result = { content: await tool.run(parsed.data) };
@@ -566,9 +620,18 @@ export class Toolbox {
         }
       }
     }
+    if (counted && session.state === 'running' && !session.sealed) {
+      const max = session.config.limits.calls_per_run;
+      if (max !== null && session.callsThisRun >= max) {
+        const ended = await session.endRun(`Reached the limit of ${max} tool calls per run.`, 'new_run', 'calls_per_run');
+        result.content.push(text(ended ? `This run reached its limit of ${max} calls, and the campaign is over: ${ended}.` : `This run reached its limit of ${max} calls and has ended. End your turn: the next run starts in a fresh session.`));
+      }
+    }
     if (result.isError) session.lastError = (result.content[0] as { text: string }).text;
+    result.content.push(text(await statusLine(session)));
     const logged = result.content.map((c) => (c.type === 'image' ? { image: c.file } : { text: c.text }));
     await session.workspace.log({ type: 'tool', name, args, result: logged, error: result.isError ?? false });
+    await session.checkpoint();
     await session.saveStatus({ last_tool: name });
     return result;
   }

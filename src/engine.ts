@@ -7,12 +7,9 @@ import { AGENT_CLIS, type Config } from './config.ts';
 import { cost, createProvider, type Conversation, type Provider, type ToolCall, type ToolSpec } from './model.ts';
 import { systemPrompt } from './prompt.ts';
 import { Session } from './session.ts';
-import { Toolbox, type ToolResult } from './tools.ts';
+import { statusLine, Toolbox, type ToolResult } from './tools.ts';
 
-const REFRESH_NOTE =
-  'Context refresh: after this turn your context will be cleared to keep it small. ' +
-  'Save what you need to /memory now: where you are, what you are doing and what comes next. The game is not affected.';
-const LAST_TURN_NOTE = 'This is the last turn of this run (limits.turns_per_run). Save what you learned to /memory now.';
+const REFRESH_NOTE = "Context refresh: after this turn your context will be cleared to keep it small. Bring README.md's Now up to date this turn. The game is not affected.";
 const NUDGE = 'Carry on with your instructions: act through the tools. Call end_run when this run is over.';
 const CUT_OFF = 'Your reply was cut off at the output limit. Keep replies shorter and act through the tools.';
 const MAX_IDLE_REPLIES = 3;
@@ -51,15 +48,16 @@ export function kTokens(n: number): string {
   return n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
 }
 
-async function opening(session: Session, toolbox: Toolbox, kind: 'run' | 'refresh'): Promise<string> {
-  const status = (await toolbox.tools.find((t) => t.name === 'status')!.run({}))[0];
-  const statusText = status?.type === 'text' ? status.text : '';
-  const earlier = (await session.workspace.runNumbers()).filter((n) => n < session.run);
+async function opening(session: Session, kind: 'run' | 'refresh'): Promise<string> {
+  const status = await statusLine(session);
   if (kind === 'refresh') {
-    return `Your context was refreshed to keep it small. This is still run ${session.run} and the game is exactly as you left it.\n\n${statusText}\n\nRead /memory to pick up where you were, then carry on.`;
+    return `Your context was refreshed to keep it small. This is still run ${session.run} and the game is exactly as you left it.\n\n${status}\n\nDo the Start step's reading (README.md, lessons.md, the parts of guide.md you need; your Objective is in /run/report.md), then carry on.`;
   }
-  const runs = earlier.length ? `Earlier runs (${earlier.length}) are under /runs with their transcripts and whatever you wrote there.` : 'This is the first run of the campaign.';
-  return `Run ${session.run} has started: the browser is open at ${session.config.url}.\n\n${statusText}\n\n${runs} Start by reading /memory, then carry on with your instructions.`;
+  const earlier = session.run > 1 ? `Earlier runs:\n\n${(await session.workspace.ledger()).split('\n').slice(2).join('\n')}` : 'This is the first run of the campaign.';
+  const start = (await session.workspace.memoryIsTemplate())
+    ? '/memory still holds the templates: Orient first, then do the Start step.'
+    : 'Begin with the Start step.';
+  return `Run ${session.run} has started: the browser is open at ${session.config.url}.\n\n${status}\n\n${earlier}\n\n${start}`;
 }
 
 export interface RunOptions {
@@ -84,6 +82,7 @@ export async function runCampaign(config: Config, options: RunOptions = {}): Pro
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
+  let failure: string | undefined;
   try {
     const toolbox = new Toolbox(session);
     const stopReason = async (): Promise<string | null> => {
@@ -97,7 +96,7 @@ export async function runCampaign(config: Config, options: RunOptions = {}): Pro
       system: await systemPrompt(config),
       log,
       stopReason,
-      opening: (kind) => opening(session, toolbox, kind),
+      opening: (kind) => opening(session, kind),
       retryBaseMs: options.retryBaseMs ?? 60_000,
       pause: async (ms) => {
         for (const end = Date.now() + ms; Date.now() < end && !(await stopReason()); ) await sleep(Math.min(5000, end - Date.now()));
@@ -113,6 +112,7 @@ export async function runCampaign(config: Config, options: RunOptions = {}): Pro
     return stopping ?? 'stopped';
   } catch (err) {
     const message = (err as Error).message;
+    failure = `error: ${message.slice(0, 200)}`;
     session.lastError = message;
     await session.workspace.log({ type: 'error', message });
     await session.notify('error', `Campaign ${config.name} stopped with an error`, message, 'problem');
@@ -120,7 +120,7 @@ export async function runCampaign(config: Config, options: RunOptions = {}): Pro
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
-    await session.close();
+    await session.close(failure ?? stopping ?? 'stopped');
   }
 }
 
@@ -142,7 +142,7 @@ async function modelLoop(drive: Drive, provider: Provider): Promise<void> {
 
     const reply = await convo.next();
     const spent = cost(reply.usage, config.model.price_per_mtok);
-    session.addUsage(reply.usage, spent);
+    await session.addUsage(reply.usage, spent);
     await session.workspace.log({
       type: 'model',
       text: reply.text,
@@ -152,7 +152,7 @@ async function modelLoop(drive: Drive, provider: Provider): Promise<void> {
       cost_usd: spent,
       context_tokens: convo.contextTokens,
     });
-    log(`run ${session.run} turn ${session.turnsThisRun}: ${reply.calls.map((c) => c.name).join(', ') || '(no tool call)'} · context ${kTokens(convo.contextTokens)} · $${session.usage.cost_usd.toFixed(2)}`);
+    log(`run ${session.run} call ${session.callsThisRun}: ${reply.calls.map((c) => c.name).join(', ') || '(no tool call)'} · context ${kTokens(convo.contextTokens)} · $${session.usage.cost_usd.toFixed(2)}`);
 
     if (!reply.calls.length) {
       idle += 1;
@@ -165,22 +165,14 @@ async function modelLoop(drive: Drive, provider: Provider): Promise<void> {
     }
     idle = 0;
 
-    const run = session.run;
     const results: { call: ToolCall; result: ToolResult }[] = [];
     for (const call of reply.calls) {
-      if (session.run !== run || session.state !== 'running') break;
+      if (session.sealed || session.state !== 'running') break;
       results.push({ call, result: await toolbox.call(call.name, call.args) });
     }
     if (session.state !== 'running') return;
-    if (session.run !== run) {
-      convo = null;
-      next = 'run';
-      refreshAfterTurn = false;
-      continue;
-    }
-    const turnLimit = config.limits.turns_per_run;
-    if (turnLimit !== null && session.turnsThisRun >= turnLimit) {
-      if (await session.endRun(`Stopped at the limit of ${turnLimit} turns per run.`, 'new_run')) return;
+    if (session.sealed) {
+      await session.nextRun();
       convo = null;
       next = 'run';
       refreshAfterTurn = false;
@@ -193,8 +185,7 @@ async function modelLoop(drive: Drive, provider: Provider): Promise<void> {
       continue;
     }
     let note: string | undefined;
-    if (turnLimit !== null && session.turnsThisRun === turnLimit - 1) note = LAST_TURN_NOTE;
-    else if (convo.contextTokens >= config.context.refresh_tokens) {
+    if (convo.contextTokens >= config.context.refresh_tokens) {
       note = REFRESH_NOTE;
       refreshAfterTurn = true;
     }

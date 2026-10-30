@@ -124,15 +124,16 @@ notify:
 | Tool | Does |
 |---|---|
 | `look` | Screenshot (image pixels = CSS pixels), optional labelled grid for aiming, zoom, save a copy |
-| `read_page` | The page's accessibility tree with element refs to click |
+| `read_page` | The page's accessibility tree with element refs to click; or a help/documentation page by URL, read in a separate browser |
 | `act` | A batch of inputs: click, tap, drag, swipe, pinch, long press, keys (held for a time), type, scroll, wait, navigate |
 | `console` | Console messages, page errors, failed requests, dialogs |
 | `clock` | Pause, advance and resume game time |
 | `browser` | Switch device or orientation, resize, restart |
 | `files` | Its workspace: `/memory` (kept across runs), `/run` (this run), `/runs` (earlier runs, read-only) |
-| `status` | Time, run, turns, tokens, cost and limits |
+| `status` | The status line plus tokens and cost (every other result already ends with the status line: local time, run, time and calls against the limits, game time, wrap-up warnings) |
+| `log` | Add a stamped line to the run's timeline (`/run/log.md`) |
 | `notify` | Tell you something now |
-| `end_run` | Finish this run and start the next, or end the campaign |
+| `end_run` | Finish this run: `new_run`, `goal_met` or `goal_impossible` |
 | `evaluate` | Run JavaScript in the page (only with `access: developer`) |
 
 ## Play through MCP
@@ -150,9 +151,11 @@ instructions. Output goes to the same campaign folder as `game-r run`.
 
 ```
 runs/<campaign>/
-  memory/            the agent's notes, kept across runs
-  run-001/           transcript.jsonl, shots/, live.jpg, end.json, and whatever the agent wrote
-  status.json        state, run, turns, tokens, cost, elapsed time, last error
+  ledger.md          one row per run: start, time, calls, cost, how it ended, summary
+  memory/            the agent's memory and your view of the campaign: README.md (goal, now, plan), guide.md, lessons.md
+  run-001/           report.md (objective, outcome), log.md (stamped timeline), run.json (facts),
+                     transcript.jsonl, shots/, live.jpg, and whatever the agent wrote
+  status.json        state, run, calls, tokens, cost, elapsed time, last error
   profile/           the browser profile (in-game saves persist across runs)
 ```
 

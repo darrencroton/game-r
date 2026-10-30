@@ -17,8 +17,11 @@ export async function makeConfig(over: Record<string, unknown> = {}): Promise<Co
   return CampaignSchema.parse(deepMerge(base, over));
 }
 
+/** A result's text without the status line that ends every result. */
 export function textOf(result: ToolResult): string {
-  return result.content
+  const last = result.content.at(-1);
+  const content = result.content.length > 1 && last?.type === 'text' && last.text.startsWith('⏱') ? result.content.slice(0, -1) : result.content;
+  return content
     .filter((c) => c.type === 'text')
     .map((c) => (c as { text: string }).text)
     .join('\n');

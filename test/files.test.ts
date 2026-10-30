@@ -31,9 +31,9 @@ test('create, view, str_replace, insert, rename and delete', async () => {
 
 test('str_replace insists on a unique match', async () => {
   const files = await setup();
-  await files.create('/run/log.md', 'a\na\n');
-  await assert.rejects(files.strReplace('/run/log.md', 'a', 'b'), /occurs 2 times/);
-  await assert.rejects(files.strReplace('/run/log.md', 'zzz', 'b'), /not found/);
+  await files.create('/run/notes.md', 'a\na\n');
+  await assert.rejects(files.strReplace('/run/notes.md', 'a', 'b'), /occurs 2 times/);
+  await assert.rejects(files.strReplace('/run/notes.md', 'zzz', 'b'), /not found/);
 });
 
 test('roots are enforced', async () => {

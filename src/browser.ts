@@ -249,6 +249,22 @@ export function columnLabel(index: number): string {
   return label;
 }
 
+/** Reads a documentation page's visible text in a throwaway headless browser, apart from the game's context. */
+export async function readDocument(engine: 'chromium' | 'firefox' | 'webkit', url: string): Promise<string> {
+  const protocol = new URL(url).protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') throw new Error(`Only http(s) URLs can be read, not ${protocol}`);
+  const browser = await { chromium, firefox, webkit }[engine].launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+    const text = await page.locator('body').innerText();
+    return text.replace(/\n{3,}/g, '\n\n').trim();
+  } finally {
+    await browser.close();
+  }
+}
+
 function gridStyle(width: number, height: number, size: number): string {
   let lines = '';
   for (let x = size; x < width; x += size) lines += `M${x},0V${height}`;

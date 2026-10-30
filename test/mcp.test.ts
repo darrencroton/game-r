@@ -26,7 +26,7 @@ test('game-r mcp serves the tools and the instructions over stdio', async () => 
     const { tools } = await client.listTools();
     assert.deepEqual(
       tools.map((t) => t.name),
-      ['look', 'read_page', 'act', 'console', 'clock', 'browser', 'files', 'status', 'notify', 'end_run'],
+      ['look', 'read_page', 'act', 'console', 'clock', 'browser', 'files', 'status', 'log', 'notify', 'end_run'],
     );
     const act = tools.find((t) => t.name === 'act')!;
     assert.equal((act.inputSchema.properties as Record<string, unknown>).actions !== undefined, true);

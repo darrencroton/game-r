@@ -58,20 +58,20 @@ describe('engine loop', () => {
   test('plays turns, feeds screenshots back, tracks cost and ends when the agent says done', async () => {
     const mock = await mockModel([
       { calls: [['look', { grid: true }], ['files', { command: 'create', path: '/memory/notes.md', file_text: 'Tap Start.' }]] },
-      { calls: [['end_run', { summary: 'Looked around.', next: 'done' }]] },
+      { calls: [['end_run', { summary: 'Looked around.', next: 'goal_met' }]] },
     ]);
     try {
       const config = await campaign(mock.url);
       const reason = await runCampaign(config, { log });
-      assert.equal(reason, 'the agent reported the campaign done');
+      assert.equal(reason, 'the agent reported the goal met');
 
       const [first, second] = mock.requests;
       assert.equal(first.model, 'mock');
       assert.equal(first.max_tokens, 16000);
       assert.equal(first.reasoning_effort, 'medium');
       assert.match(first.messages[0].content, /You are playing and testing a web game[\s\S]*Play the game\./);
-      assert.match(lastUserText(first), /Run 1 has started[\s\S]*first run of the campaign[\s\S]*reading \/memory/);
-      assert.deepEqual(first.tools.map((t: any) => t.function.name), ['look', 'read_page', 'act', 'console', 'clock', 'browser', 'files', 'status', 'notify', 'end_run']);
+      assert.match(lastUserText(first), /Run 1 has started[\s\S]*⏱ [\s\S]*first run of the campaign[\s\S]*Orient first/);
+      assert.deepEqual(first.tools.map((t: any) => t.function.name), ['look', 'read_page', 'act', 'console', 'clock', 'browser', 'files', 'status', 'log', 'notify', 'end_run']);
       assert.equal(first.tools[0].function.parameters.properties.region.maxItems, 4);
 
       const tools = second.messages.filter((m: any) => m.role === 'tool');
@@ -104,7 +104,7 @@ describe('engine loop', () => {
     const mock = await mockModel([
       { calls: [['status', {}]], prompt: 5000 },
       { calls: [['files', { command: 'create', path: '/memory/where.md', file_text: 'On the menu.' }]], prompt: 6000 },
-      { calls: [['end_run', { summary: 'Done.', next: 'done' }]] },
+      { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] },
     ]);
     try {
       await runCampaign(await campaign(mock.url, { context: { refresh_tokens: 4000 } }), { log });
@@ -118,7 +118,7 @@ describe('engine loop', () => {
   });
 
   test('OpenCode Go style: per-conversation headers, raw reasoning values, no images for a text-only model', async () => {
-    const mock = await mockModel([{ calls: [['look', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'done' }]] }]);
+    const mock = await mockModel([{ calls: [['look', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] }]);
     try {
       process.env.TEST_GO_KEY = 'go-key';
       const config = await campaign(mock.url, {
@@ -149,12 +149,12 @@ describe('engine loop', () => {
     }
   });
 
-  test('turns_per_run ends the run with a last-turn warning; the run limit ends the campaign', async () => {
+  test('calls_per_run warns ahead, then seals the run; the run limit ends the campaign', async () => {
     const mock = await mockModel([{ calls: [['status', {}]] }, { calls: [['status', {}]] }]);
     try {
-      const reason = await runCampaign(await campaign(mock.url, { limits: { runs: 1, turns_per_run: 2 } }), { log });
+      const reason = await runCampaign(await campaign(mock.url, { limits: { runs: 1, calls_per_run: 2 } }), { log });
       assert.equal(reason, 'limit reached: 1 runs');
-      assert.match(lastUserText(mock.requests[1]), /last turn of this run/);
+      assert.match(JSON.stringify(mock.requests[1].messages), /wrap up: 1 calls left in this run\. Do the End step now/);
     } finally {
       mock.close();
     }

@@ -41,7 +41,13 @@ defaults:
     runs: 10
     hours: 48
     cost_usd: null                   # needs price_per_mtok (API providers) or a CLI that reports cost
-    turns_per_run: null              # model turns (API providers) or tool calls (agent CLIs) per run
+    calls_per_run: null              # tool calls per run, for every player; the run is sealed when it is reached
+    wrap_up_minutes: 5               # the status line warns this long before the hours limit (and past 90% of cost_usd,
+                                     # or with 10 calls left) so the agent can do its End step; limits themselves stay hard
+  pace:
+    seconds_per_call: 0              # minimum seconds between game-tool calls (0 = off; max 600). Slows the agent to spread
+                                     # a subscription's usage or an API budget over more hours; workspace tools are never paced.
+                                     # Above ~300 s every call misses the prompt cache. Real-time games run on while it waits.
   notify:
     # Run with $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_EVENT $GAMER_CAMPAIGN set; refer to them, never paste game text in.
     # ping-me is the owner's iMessage script; a failure is logged in the transcript (notify_failed). macOS alternative:
@@ -60,18 +66,18 @@ campaigns:
       Test ToME — Tales of Middle-earth as a phone player would. Create a hero and play normally,
       and look for UI bugs, quirks and anything confusing: layout in portrait and landscape,
       menus, sheets, cards, the toolbar, the inventory and the character screens.
-      Keep a running log in /run/log.md. Write each finding to /run/findings.md with steps to
-      reproduce, what you expected, what happened and a saved screenshot. Notify me of serious ones.
+      Write each finding to /run/findings.md with steps to reproduce, what you expected,
+      what happened and a saved screenshot. Notify me of serious ones.
       Work for about 6 hours of wall time, starting new runs (new heroes) when it helps.
 
   tome-barrow:
     url: https://darrencroton.github.io/tales-of-middle-earth/
     browser: { device: "Pixel 7", headless: false }
-    limits: { runs: 1, hours: 0.25 }   # first sample: usage, cost and how the agent copes; raise to continue
+    limits: { runs: 3, hours: 0.5 }    # a short sample: usage, cost and how the agent copes; raise to continue
     instructions: |
       Goal: create a new hero and take them to the bottom of the Barrow-downs, the first dungeon
       (dungeon level 10, 500 ft), alive. Play as a phone player would, through the game's own UI.
-      Keep a short progress log in /run/log.md (time, depth, character level, hit points, notable events).
+      Log depth, character level and hit points at each new dungeon level.
       Notify me when you reach each new dungeon level, and if the hero dies.
 
   drones-score:
@@ -80,16 +86,17 @@ campaigns:
     limits: { runs: 20 }
     instructions: |
       Play a Skirmish on Riverlands against the Normal AI and win as quickly as you can.
-      After each match, record the result, the game time it took and what you would change
-      in /memory, then start a new run and try to beat your best time.
+      After each match, record the result, the game time it took and what you would change,
+      then start a new run and try to beat your best time.
 
   # A small local test game (test/fixtures/game.html), one campaign per way of playing, for trying the setup.
+  # A local game may open files beside it (act goto), so keep each local game in its own folder.
   dodge:
     url: ./test/fixtures/game.html
     model: { name: haiku }
     limits: { runs: 2, hours: 0.25 }
     instructions: &dodge |
-      This is a small test game. Survive as long as you can and report your best score in /run/report.md.
+      This is a small test game. Survive as long as you can; your best score is the result.
 
   dodge-codex:
     url: ./test/fixtures/game.html

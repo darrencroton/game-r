@@ -8,7 +8,7 @@ const NUDGE = `Carry on with your instructions: act through the ${MCP_SERVER_NAM
 const MAX_IDLE = 3;
 const MAX_FAILURES = 8;
 const TOOL_TIMEOUT_S = 900;
-const FINISH_GRACE_MS = 20_000;
+const FINISH_GRACE_MS = 60_000;
 /** Variables a cloud Claude Code session sets that would make a nested `claude` reuse its session. */
 const CLEARED_ENV = ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION'];
 
@@ -19,6 +19,8 @@ interface Invocation {
   costUsd: number | null;
   error: string | null;
   text: string;
+  /** The CLI reported its usage (Claude Code's final JSON, or a Codex turn.completed). */
+  receipt?: boolean;
 }
 
 interface AgentCli {
@@ -72,6 +74,7 @@ function claudeCode(drive: Drive, mcp: HttpMcp): AgentCli {
         costUsd: typeof r.total_cost_usd === 'number' ? r.total_cost_usd : null,
         error: r.is_error ? String(r.result || r.subtype || 'error') : null,
         text: typeof r.result === 'string' ? r.result : '',
+        receipt: r.usage !== undefined,
       };
     },
   };
@@ -122,6 +125,7 @@ function codex(drive: Drive, mcp: HttpMcp): AgentCli {
         }
         if (e.type === 'thread.started') out.sessionId = e.thread_id ?? null;
         if (e.type === 'turn.completed' && e.usage) {
+          out.receipt = true;
           const cached = e.usage.cached_input_tokens ?? 0;
           out.usage.input += (e.usage.input_tokens ?? 0) - cached;
           out.usage.cache_read += cached;
@@ -171,7 +175,7 @@ async function invoke(drive: Drive, cli: AgentCli, mcp: HttpMcp, prompt: string,
   const watch = setInterval(async () => {
     if (interrupted) return;
     const stop = await drive.stopReason();
-    if (session.state !== 'running' || session.run !== run) endedAt ??= Date.now();
+    if (session.state !== 'running' || session.sealed || session.run !== run) endedAt ??= Date.now();
     if (!stop && (endedAt === null || Date.now() - endedAt < FINISH_GRACE_MS)) return;
     interrupted = true;
     child.kill('SIGINT');
@@ -207,6 +211,8 @@ export async function agentLoop(drive: Drive): Promise<void> {
         await session.finish(limit);
         return;
       }
+      await session.nextRun();
+      if (session.state !== 'running') return;
       if (session.run !== run) {
         run = session.run;
         runCallsAt = toolbox.calls;
@@ -222,11 +228,11 @@ export async function agentLoop(drive: Drive): Promise<void> {
         spent = Math.max(0, r.costUsd - (costSeen.get(r.sessionId) ?? 0));
         costSeen.set(r.sessionId, r.costUsd);
       }
-      session.addUsage(r.usage, spent, calls);
+      await session.addUsage(r.usage, spent, calls, r.receipt === true);
       await session.workspace.log({ type: 'agent', provider: config.model.provider, session_id: r.sessionId, text: r.text, tool_calls: calls, usage: r.usage, cost_usd: spent, error: r.error });
       log(`run ${run}: ${config.model.provider} ${r.sessionId?.slice(0, 8) ?? '-'} · ${calls} tool calls${r.error ? ` · error: ${r.error.slice(0, 160)}` : ''}${r.costUsd !== null ? ` · $${session.usage.cost_usd.toFixed(2)}` : ''}`);
 
-      if (session.state !== 'running' || session.run !== run) continue;
+      if (session.state !== 'running' || session.sealed || session.run !== run) continue;
       if (r.error) {
         failures += 1;
         if (failures === 1) await session.notify('error', `${config.model.provider} failed in ${config.name}`, `${r.error.slice(0, 500)} (retrying)`, 'problem');
@@ -247,8 +253,6 @@ export async function agentLoop(drive: Drive): Promise<void> {
         await session.finish(`the agent stopped acting (${MAX_IDLE} sessions in a row without a tool call)`);
         return;
       }
-      const turnLimit = config.limits.turns_per_run;
-      if (turnLimit !== null && session.turnsThisRun >= turnLimit && (await session.endRun(`Stopped at the limit of ${turnLimit} tool calls per run.`, 'new_run'))) return;
     }
   } finally {
     await mcp.close();

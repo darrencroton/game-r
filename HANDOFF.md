@@ -18,7 +18,7 @@ Work now happens locally on the user's Mac (from 2026-10-30), on `main`.
 
 ## Where things stand
 
-Merged to `main`. 35 tests pass (`npm test`, about 30 s); typecheck clean.
+Merged to `main`. 40 tests pass (`npm test`, about 30 s); typecheck clean.
 
 | Part | State |
 |---|---|
@@ -99,6 +99,8 @@ Merged to `main`. 35 tests pass (`npm test`, about 30 s); typecheck clean.
 ## To do (from the user, 2026-10-30)
 
 Address these together with the issues and lessons from the first `tome-barrow` run (15 min sample).
+
+**Status:** items 1, 2, 3, 5 and 6 are built as design step 3b (`docs/MCP-DESIGN.md` §7). Pacing is `pace.seconds_per_call`; soft limits are `limits.wrap_up_minutes` warnings; there is a templated memory and a run protocol; a status line ends every result; `end_run` takes `new_run`, `goal_met` or `goal_impossible`. Item 4 waits for a 30-minute rerun of `tome-barrow`, compared with the first.
 
 | # | Item | Notes |
 |---|---|---|

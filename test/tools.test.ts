@@ -32,7 +32,9 @@ describe('tools against the fixture game', () => {
     assert.ok(!result.isError, textOf(result));
     const img = result.content.find((c) => c.type === 'image');
     assert.ok(img && img.type === 'image' && img.data.length > 1000);
-    assert.match(textOf(result), /"Dodge" · viewport 1280×800 css px · desktop · clock running/);
+    assert.match(textOf(result), /"Dodge" · viewport 1280×800 css px · desktop · grid/);
+    const line = result.content.at(-1);
+    assert.ok(line?.type === 'text' && /^⏱ \d\d:\d\d:\d\d .* · run 1 of 2 · \dm\d\ds in run · 1 calls · campaign \dm\d\ds of 48h00m · game \d+\.\ds$/.test(line.text), JSON.stringify(line));
     assert.match(textOf(result), /grid 64px · \/run\/shots\/0001\.jpg · saved as \/run\/findings\/menu\.jpg/);
     await stat(path.join(session.workspace.runDir, 'findings', 'menu.jpg'));
     await stat(path.join(session.workspace.runDir, 'live.jpg'));
@@ -129,22 +131,36 @@ describe('tools against the fixture game', () => {
     await call('browser', { device: 'desktop', orientation: 'portrait' });
   });
 
-  test('status reports the run and limits', async () => {
-    const text = textOf(await call('status'));
-    assert.match(text, /Run 1 \(limit 2, 1 left\)/);
-    assert.match(text, /Wall time: campaign 0h 00m \(limit 48h 00m/);
-    assert.match(text, /Tokens: 0 in, 0 out/);
+  test('status reports the campaign, and ends with the status line like every result', async () => {
+    const result = await call('status');
+    assert.match(textOf(result), /^test · running · 0 tokens in, 0 out/);
+    assert.match((result.content.at(-1) as { text: string }).text, /^⏱ .* · run 1 of 2 · /);
   });
 
-  test('end_run starts a new run, then the run limit ends the campaign', async () => {
+  test('templates, log and report start each run; log.md is the framework\'s', async () => {
+    const memory = textOf(await call('files', { command: 'view', path: '/memory' }));
+    for (const name of ['README.md', 'guide.md', 'lessons.md']) assert.match(memory, new RegExp(`${name} \\(\\d+ B, changed `));
+    assert.match(textOf(await call('files', { command: 'view', path: '/run/report.md' })), /# Run 1[\s\S]*## Objective/);
+    await call('log', { text: 'Chose hard mode: the guide says it scores double.' });
+    const log = textOf(await call('files', { command: 'view', path: '/run/log.md' }));
+    assert.match(log, /- \d\d:\d\d:\d\d .* \(\+\dm\d\ds\) Run 1 started/);
+    assert.match(log, /\(\+\dm\d\ds\) Chose hard mode: the guide says it scores double\./);
+    assert.match(textOf(await call('files', { command: 'create', path: '/run/log.md', file_text: 'x' })), /written by the engine/);
+  });
+
+  test('end_run seals the run; the next starts only when the driver begins it; the run limit ends the campaign', async () => {
     await call('files', { command: 'create', path: '/memory/notes.md', file_text: 'Rocks fall every 500 ms.' });
     let result = await call('end_run', { summary: 'Learned the controls.', next: 'new_run' });
-    assert.match(textOf(result), /Run 2 has started/);
+    assert.match(textOf(result), /Run 1 ended\. End your turn now/);
+    assert.match(textOf(await call('look')), /Run 1 has ended\. End your turn/);
+    const facts = JSON.parse(await readFile(path.join(session.workspace.dir, 'run-001', 'run.json'), 'utf8'));
+    assert.equal(facts.summary, 'Learned the controls.');
+    assert.equal(facts.ended_by, 'end_run');
+    assert.match(await readFile(path.join(session.workspace.dir, 'ledger.md'), 'utf8'), /\| 1 \| .* \| end_run \| new_run \| Learned the controls\. \|/);
+    await session.nextRun();
     assert.equal(session.run, 2);
-    const end = JSON.parse(await readFile(path.join(session.workspace.dir, 'run-001', 'end.json'), 'utf8'));
-    assert.equal(end.summary, 'Learned the controls.');
     assert.match(textOf(await call('files', { command: 'view', path: '/memory/notes.md' })), /500 ms/);
-    assert.match(textOf(await call('files', { command: 'view', path: '/runs' })), /run-001\/[\s\S]*end\.json[\s\S]*run-002\//);
+    assert.match(textOf(await call('files', { command: 'view', path: '/runs' })), /run-001\/[\s\S]*run\.json[\s\S]*run-002\//);
     const transcript = (await readFile(path.join(session.workspace.dir, 'run-001', 'transcript.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(transcript.some((e) => e.type === 'tool' && e.name === 'look' && e.result.some((r: { image?: string }) => r.image === '/run/shots/0001.jpg')));
 
@@ -163,7 +179,39 @@ describe('access and clock settings', () => {
     const session = await Session.open(await makeConfig({ clock: 'off' }), 'mcp');
     try {
       const names = new Toolbox(session).tools.map((t) => t.name);
-      assert.deepEqual(names, ['look', 'read_page', 'act', 'console', 'browser', 'files', 'status', 'notify', 'end_run']);
+      assert.deepEqual(names, ['look', 'read_page', 'act', 'console', 'browser', 'files', 'status', 'log', 'notify', 'end_run']);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test('reopening a campaign at its limit leaves the last run\'s facts alone', async () => {
+    const config = await makeConfig({ limits: { runs: 1 } });
+    const first = await Session.open(config, 'mcp');
+    await first.begin();
+    await new Toolbox(first).call('end_run', { summary: 'The only run.', next: 'new_run' });
+    await first.close();
+    const facts = path.join(first.workspace.dir, 'run-001', 'run.json');
+    const before = await readFile(facts, 'utf8');
+    const second = await Session.open(config, 'mcp');
+    await second.begin();
+    await second.close();
+    assert.equal(second.doneReason, 'limit reached: 1 runs');
+    assert.equal(await readFile(facts, 'utf8'), before);
+  });
+
+  test('pace.seconds_per_call spaces out game tools only', async () => {
+    const session = await Session.open(await makeConfig({ pace: { seconds_per_call: 0.4 } }), 'mcp');
+    try {
+      const box = new Toolbox(session);
+      await session.begin();
+      await box.call('console', {});
+      let t = Date.now();
+      await box.call('console', {});
+      assert.ok(Date.now() - t >= 350, `game tool waited ${Date.now() - t} ms`);
+      t = Date.now();
+      await box.call('files', { command: 'view', path: '/memory' });
+      assert.ok(Date.now() - t < 200, `workspace tool waited ${Date.now() - t} ms`);
     } finally {
       await session.close();
     }
@@ -190,7 +238,7 @@ describe('access and clock settings', () => {
       const result = await new Toolbox(session).call('notify', { title: 'Hi; rm -rf /', message: '$(whoami)', level: 'finding' });
       assert.equal(textOf(result), 'Sent.');
       assert.equal(await readFile(out, 'utf8'), 'Hi; rm -rf /|$(whoami)|finding');
-      await session.workspace.startRun();
+      await session.workspace.startRun(new Date(), 'now');
       session.config.notify.command = 'exit 3';
       assert.match(textOf(await new Toolbox(session).call('notify', { title: 'Hi', message: 'x' })), /exited with code 3/);
       await session.notify('run_end', 'Run 1 ended', 'x');

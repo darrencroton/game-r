@@ -34,7 +34,7 @@ if (!campaign) {
 
 const config = await loadConfig(values.config!, campaign);
 config.name = `${config.name}-hand`;
-config.limits = { runs: null, hours: null, cost_usd: null, turns_per_run: null };
+config.limits = { runs: null, hours: null, cost_usd: null, calls_per_run: null, wrap_up_minutes: 0 };
 if (values.headed) config.browser.headless = false;
 if (!values.notify) config.notify.command = null;
 const out = path.resolve(values.out!);

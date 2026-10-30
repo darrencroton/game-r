@@ -74,7 +74,8 @@ export class Files {
           out.push(`${indent}${entry.name}/ (${count} items)`);
           if (depth < 1 && entry.name !== 'shots') await walk(full, depth + 1, indent + '  ');
         } else {
-          out.push(`${indent}${entry.name} (${formatSize((await stat(full)).size)})`);
+          const info = await stat(full);
+          out.push(`${indent}${entry.name} (${formatSize(info.size)}, changed ${info.mtime.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short', hour12: false })})`);
         }
       }
     };

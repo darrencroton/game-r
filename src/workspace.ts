@@ -1,9 +1,27 @@
-import { appendFile, mkdir, open, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import type { Config } from './config.ts';
 
-export const ENGINE_FILES = new Set(['transcript.jsonl', 'shots', 'live.jpg', 'end.json', 'video', 'trace.zip']);
+export const ENGINE_FILES = new Set(['transcript.jsonl', 'shots', 'live.jpg', 'run.json', 'log.md', 'video', 'trace.zip']);
+
+const TEMPLATES = new URL('../templates/', import.meta.url).pathname;
+
+/** The facts of one run, written only by the framework. */
+export interface RunFacts {
+  run: number;
+  started_at: string;
+  ended_at?: string;
+  duration_ms?: number;
+  calls?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+  usage_known?: boolean;
+  ended_by?: string;
+  next?: string;
+  summary?: string;
+}
 
 function pidAlive(pid: number): boolean {
   try {
@@ -68,15 +86,62 @@ export class Workspace {
       .sort((a, b) => a - b);
   }
 
-  async startRun(): Promise<number> {
+  /** Creates the next run's folder, its report from the template, and the memory templates if /memory is empty. */
+  async startRun(startedAt: Date, started: string): Promise<number> {
     this.run += 1;
     await mkdir(path.join(this.runDir, 'shots'), { recursive: true });
     if (this.config.browser.profile === 'run') await rm(this.profileDir, { recursive: true, force: true });
+    if (!(await readdir(this.memoryDir)).some((name) => !name.startsWith('.'))) {
+      for (const name of await readdir(path.join(TEMPLATES, 'memory'))) await copyFile(path.join(TEMPLATES, 'memory', name), path.join(this.memoryDir, name));
+    }
+    const report = await readFile(path.join(TEMPLATES, 'run', 'report.md'), 'utf8');
+    await writeFile(path.join(this.runDir, 'report.md'), report.replace('{{run}}', String(this.run)).replace('{{started}}', started));
+    await this.saveRun({ run: this.run, started_at: startedAt.toISOString() });
     return this.run;
   }
 
-  async endRun(summary: string, next: string): Promise<void> {
-    await writeFile(path.join(this.runDir, 'end.json'), JSON.stringify({ summary, next, ended_at: new Date().toISOString() }, null, 2));
+  /** True while /memory/README.md is still the template. */
+  async memoryIsTemplate(): Promise<boolean> {
+    const [mine, template] = await Promise.all([
+      readFile(path.join(this.memoryDir, 'README.md'), 'utf8').catch(() => null),
+      readFile(path.join(TEMPLATES, 'memory', 'README.md'), 'utf8'),
+    ]);
+    return mine === null || mine === template;
+  }
+
+  /** Writes run.json (atomically) and, unless told not to, regenerates ledger.md. */
+  async saveRun(facts: RunFacts, ledger = true): Promise<void> {
+    const file = path.join(this.dir, runName(facts.run), 'run.json');
+    await writeFile(`${file}.tmp`, JSON.stringify(facts, null, 2));
+    await rename(`${file}.tmp`, file);
+    if (ledger) await writeFile(path.join(this.dir, 'ledger.md'), await this.ledger());
+  }
+
+  /** A table of every run, built from their run.json files. */
+  async ledger(): Promise<string> {
+    const rows: string[] = [];
+    for (const n of await this.runNumbers()) {
+      let f: RunFacts | null;
+      try {
+        f = JSON.parse(await readFile(path.join(this.dir, runName(n), 'run.json'), 'utf8').catch(() => 'null'));
+      } catch {
+        rows.push(`| ${n} | | | | | run.json unreadable | | |`);
+        continue;
+      }
+      if (!f) continue;
+      const minutes = f.duration_ms === undefined ? '' : `${Math.round(f.duration_ms / 60_000)} min`;
+      const cost = f.usage_known === false ? 'unknown' : f.cost_usd === undefined ? '' : `$${f.cost_usd.toFixed(2)}`;
+      const ended = f.ended_at ? (f.ended_by ?? '') : n === this.run && this.locked ? 'running' : 'interrupted';
+      const summary = (f.summary ?? '').split('\n')[0]!.slice(0, 200).replace(/\|/g, '/');
+      const started = new Date(f.started_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short', hour12: false });
+      rows.push(`| ${n} | ${started} | ${minutes} | ${f.calls ?? ''} | ${cost} | ${ended} | ${f.next ?? ''} | ${summary} |`);
+    }
+    return `# Runs of ${this.config.name}\n\n| Run | Started | Time | Calls | Cost | Ended by | Next | Summary |\n|---|---|---|---|---|---|---|---|\n${rows.join('\n')}\n`;
+  }
+
+  async timeline(line: string): Promise<void> {
+    if (!this.run) return;
+    await appendFile(path.join(this.runDir, 'log.md'), line + '\n');
   }
 
   async log(event: Record<string, unknown>): Promise<void> {

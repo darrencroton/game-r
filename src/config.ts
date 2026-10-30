@@ -45,7 +45,12 @@ const LimitsSchema = z.object({
   runs: z.number().int().positive().nullable().default(10),
   hours: z.number().positive().nullable().default(48),
   cost_usd: z.number().positive().nullable().default(null),
-  turns_per_run: z.number().int().positive().nullable().default(null),
+  calls_per_run: z.number().int().positive().nullable().default(null),
+  wrap_up_minutes: z.number().nonnegative().default(5),
+});
+
+const PaceSchema = z.object({
+  seconds_per_call: z.number().min(0).max(600).default(0),
 });
 
 const NotifyEvent = z.enum(['agent', 'run_end', 'campaign_end', 'limit', 'error']);
@@ -65,6 +70,7 @@ export const CampaignSchema = z.object({
   clock: z.enum(['allowed', 'off']).default('allowed'),
   context: ContextSchema.default(ContextSchema.parse({})),
   limits: LimitsSchema.default(LimitsSchema.parse({})),
+  pace: PaceSchema.default(PaceSchema.parse({})),
   notify: NotifySchema.default(NotifySchema.parse({})),
   system_prompt_file: z.string().nullable().default(null),
   output: z.string().default('./runs'),

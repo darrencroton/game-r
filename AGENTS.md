@@ -48,12 +48,13 @@ Read these first:
 ```
 src/cli.ts        commands: run, stop, mcp, status, config, list
 src/config.ts     zod schema for game-r.yaml; defaults → campaign merge; path resolution
-src/workspace.ts  campaign directory, lock, run folders, transcript, status.json
-src/session.ts    one campaign in one process: workspace + browser + files, limits, notify, usage
+src/workspace.ts  campaign directory, lock, run folders (run.json, report from template, log.md), ledger, memory templates, status.json
+src/session.ts    one campaign in one process: run lifecycle (seal, next run), limits and warnings, pacing, timeline, notify, usage
 src/browser.ts    Playwright: persistent context, devices, console capture, clock, touch, screenshots + grid
 src/files.ts      the files tool's backend: /memory (rw), /run (rw), /runs (ro)
-src/tools.ts      the tool registry (zod inputs) and Toolbox.call (validate, run, log, never throw)
-src/prompt.ts     the framework system prompt + the campaign's instructions
+src/tools.ts      the tool registry (zod inputs), the status line, and Toolbox.call (count, validate, pace, run, log, never throw)
+src/prompt.ts     the framework system prompt (tools, memory layout, run protocol) + the campaign's instructions
+templates/        memory (README.md, guide.md, lessons.md) and run (report.md) templates: headings only; the rules live in prompt.ts
 src/mcp.ts        the tools as an MCP server: stdio (`game-r mcp`) or loopback HTTP with a bearer token (for agent CLIs)
 src/engine.ts     `game-r run`: shared set-up, stop and errors; the model loop (openings, refresh, nudges, limits)
 src/agent.ts      `game-r run` with an agent CLI: claude-code (`claude -p`) or codex (`codex exec`) playing over HTTP MCP
@@ -68,7 +69,7 @@ test/             node:test; fixtures/game.html is a small canvas game; fixtures
 
 ```zsh
 ./setup.sh [--skip-tests]                  # setup / health check, safe to re-run
-npm test                                   # 35 tests, ~10-30 s, real headless Chromium
+npm test                                   # 40 tests, ~15-30 s, real headless Chromium
 npm run typecheck                          # tsc --noEmit over src, test, scripts
 node src/cli.ts list | config <c> | status [c] | run <c> | stop <c> | mcp <c>
 node scripts/drive.ts <c> [--headed]       # hand-play driver
@@ -101,6 +102,13 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   timing flakiness.
 
 ## Lessons learned (don't rediscover these)
+
+**Memory, reporting and the protocol (design §7)**
+- The first real ToME run (Opus) skipped the game's help, invented clock times, thought 15 minutes had passed after 3.4, and ended the campaign with its goal unmet. Structure fixed it, not supervision: templated memory, a run protocol in the prompt, a status line on every result, and framework-written facts.
+- Rules live once, in `src/prompt.ts`. Templates hold headings and one descriptive line; notes and openings name protocol steps instead of restating them.
+- `end_run` seals the run; the driver starts the next (a fresh CLI session or conversation), so a late call can't play the next run. Under `game-r mcp` the next run starts at the next call.
+- Every result ends with the status line; tests' `textOf` drops it. Calls are counted before a tool runs, so every line agrees.
+- `read_page {url}` uses a separate headless browser: the game's clock is installed on its whole context and every tab is watched. Plain text beats an accessibility snapshot for docs pages. Only http(s): `file:` would let an injected agent read local files.
 
 **Playwright and the browser**
 - `context.clock.install()` must run when the context is created, before page

@@ -360,7 +360,7 @@ Separate campaigns run in parallel, each with its own browser, directory and loc
 | 2 | Engine loop (`game-r run`, `stop`), context refresh, usage and cost, limits, OpenAI-compatible provider | Loop tests against a mock model server | **Built** |
 | 2b | Agent CLI players (Claude Code, Codex) over HTTP MCP; OpenCode Go support (headers, `vision`) | Fake-CLI tests; a real Claude Code smoke run | **Built** (34 tests). Claude Code verified for real; Codex and OpenCode Go await access |
 | 3 | Both example games, live | Hand-played tool checks, then short campaigns per provider | Next (see `HANDOFF.md`) |
-| 3b | §7: status line, `log`, templates and protocol, `run.json` and ledger, run boundaries, `read_page {url}`, `end_run` outcomes, wrap-up warnings, `calls_per_run`, pacing | Unit tests; then a 30-minute ToME rerun compared with the first | Next |
+| 3b | §7: status line, `log`, templates and protocol, `run.json` and ledger, run boundaries, `read_page {url}`, `end_run` outcomes, wrap-up warnings, `calls_per_run`, pacing | Unit tests (40); then a 30-minute ToME rerun compared with the first | **Built**; rerun next |
 | 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory | |
 | — | Anthropic API provider | — | Deferred: subscriptions cover Claude |
 

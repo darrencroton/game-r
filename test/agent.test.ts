@@ -34,9 +34,9 @@ describe('agent CLI drivers', () => {
   test('claude-code: tools only, the system prompt, resume with a nudge, cumulative cost', async () => {
     const { reason, calls, status, config } = await play('claude-code', [
       { calls: [['look', {}], ['files', { command: 'create', path: '/memory/notes.md', file_text: 'Start is top left.' }]] },
-      { calls: [['end_run', { summary: 'Learned the menu.', next: 'done' }]] },
+      { calls: [['end_run', { summary: 'Learned the menu.', next: 'goal_met' }]] },
     ]);
-    assert.equal(reason, 'the agent reported the campaign done');
+    assert.equal(reason, 'the agent reported the goal met');
     assert.equal(calls.length, 2);
     const [first, second] = calls.map((c) => c.argv);
     assert.equal(after(first!, '-p').startsWith('Run 1 has started'), true);
@@ -56,8 +56,8 @@ describe('agent CLI drivers', () => {
   });
 
   test('codex: exec with JSON events, MCP over HTTP, no shell tool, resume by thread id', async () => {
-    const { reason, calls, status } = await play('codex', [{ calls: [['status', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'done' }]] }]);
-    assert.equal(reason, 'the agent reported the campaign done');
+    const { reason, calls, status } = await play('codex', [{ calls: [['status', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'goal_met' }]] }]);
+    assert.equal(reason, 'the agent reported the goal met');
     const [first, second] = calls.map((c) => c.argv);
     assert.deepEqual(first!.slice(0, 2), ['exec', '--json']);
     for (const setting of ['features.shell_tool=false', 'mcp_servers.gamer.default_tools_approval_mode="approve"', 'mcp_servers.gamer.bearer_token_env_var="GAMER_MCP_TOKEN"', 'model_reasoning_effort="high"']) {
@@ -78,7 +78,7 @@ describe('agent CLI drivers', () => {
     });
     assert.equal(reason, 'limit reached: 2 runs');
     assert.ok(!calls[1]!.argv.includes('--resume'));
-    assert.match(after(calls[1]!.argv, '-p'), /^Run 2 has started[\s\S]*Earlier runs \(1\)/);
+    assert.match(after(calls[1]!.argv, '-p'), /^Run 2 has started[\s\S]*⏱ [\s\S]*Earlier runs:[\s\S]*\| 1 \|[\s\S]*\| One\. \|/);
   });
 
   test('failures back off and retry; idle sessions end the campaign', async () => {
