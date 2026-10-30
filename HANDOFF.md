@@ -109,6 +109,9 @@ Address these together with the issues and lessons from the first `tome-barrow` 
 | 3 | **Orientation doc** | Check whether the agent writes itself a context doc unprompted (game purpose, core mechanics, style, controls, objectives beyond the task). If it doesn't, consider a general first step for every campaign: build or refresh `/memory/context.md` (or similar) before playing, and re-read it at each run start and after each refresh. A sentence in the framework prompt is preferred over a new mechanism. |
 | 4 | **Cost estimate** | From the first run's usage, estimate the cost per hour and per dungeon level for Opus. Compare with Sonnet before long campaigns. |
 | 5 | **Agent's sense of time** | First run: the agent never called `status`, believed its 15 minutes were up after 3.4, invented clock times in its log, and ended the campaign. Candidate fix: show wall time used against the limit in every tool result's status line (e.g. `run 3m24s of 15m`), so time is always in view without a call. |
+| 7 | **Orientation skipped** | Second run: never read the game's help despite "Orient first". Options: make step 1 explicit that it applies whatever the time limit, and name what to open first (the game's own help, manual or tutorial); or have the first-run opening say so concretely. Prefer a prompt sentence to any mechanism; test it with a longer limit, since 30 minutes invited rushing. |
+| 8 | **`runs` in roguelikes** | A death ends a run, so `runs` counts deaths. Set `runs: null` for such campaigns and bound them by `hours`; say so in `game-r.yaml`. |
+| 9 | **Sonnet comparison** | Same campaign on Sonnet (about half the price) to compare play and cost per hour. |
 | 6 | **`done` too early** | It ended with `next: done` although the goal was unmet. Candidate fix: one framework-prompt sentence: `done` only when the instructions are complete or cannot be completed; otherwise `new_run`. |
 
 ### First `tome-barrow` run (2026-10-30, Opus, medium effort, Pixel 7)
@@ -118,7 +121,28 @@ Address these together with the issues and lessons from the first `tome-barrow` 
 - **Play:** the contextual toolbar button did most of the work ("Way down" walks from Bree to the dungeon). It went down without wearing its starting chain mail and without potions, and a newt took it to 0 HP on level 1. It survived, rested, and wore the armour after that.
 - **Notes:** `/memory/notes.md` (written 2.3 minutes in) holds UI coordinates, status and lessons, but no orientation (game purpose, mechanics, how to survive). It never opened the game's *How to play*. This supports item 3.
 - **Tools:** no tool errors. Taps by coordinate, typing, waits and `look_after` all worked; `read_page` was used once; the clock was never paused (turn-based game). `ping-me` delivered the milestone. Screenshots render the game cleanly in headed Chromium.
-- **The hero:** Bram is alive at 50 ft. `profile: campaign` keeps the browser storage, so the next run can probably continue him.
+- **The hero:** Bram is alive at 50 ft. (That campaign was cleared for a fresh rerun.)
+
+### Second `tome-barrow` run, after step 3b (2026-10-30, Opus, medium effort, Pixel 7, fresh state)
+
+`limits: { runs: 3, hours: 0.5 }`. Every hero died, and each death ended a run, so the 3-run limit ended the campaign after 18 minutes.
+
+| | First run | Second (3 runs) |
+|---|---|---|
+| Time, calls | 3.4 min, 41 | 18 min, 227 (42 + 94 + 91) |
+| Cost (Claude Code estimate) | $0.76 (≈ $13/h) | $4.83 (≈ $16/h); context per call ≈ 28k in a short run, ≈ 50k in a 7-minute run |
+| Deepest / outcome | DL1, alive; ended "done" with the goal unmet | DL2 (runs 2 and 3); all three heroes died; every run ended `new_run` correctly |
+| Time-keeping | Invented times; thought 15 min had passed after 3.4 | Correct throughout: it planned against the status line ("17 min left") |
+| Memory | One flat file of screen coordinates | A goal checklist with evidence paths, Now with a concrete next action, a real guide, and 15 specific lessons, some marked Unverified |
+| Learning across runs | — | Yes. Run 2 wore its armour; run 3 bought supplies, levelled on DL1 first, avoided a sleeping out-of-depth monster and routed around breeding worms |
+| Orientation | None | **None.** It never opened *How to play* or read documentation, although the opening said "Orient first". It traded reading for speed under the short limit, and never found the Alchemist for healing potions |
+
+**What this says:**
+
+- The structure works: the memory, the lessons and the time-keeping are much better.
+- **Orientation still didn't happen.** A short time limit visibly pushed the agent to rush; the protocol's Orient step reads as optional.
+- In a roguelike, **`runs` counts deaths**. The default of 10 runs (and 3 here) ends a campaign quickly. Hours, not runs, should bound such campaigns.
+- Cost per call grows with the run's context (each run is one CLI session), so long runs cost more per call.
 
 ---
 
