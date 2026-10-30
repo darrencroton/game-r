@@ -124,6 +124,9 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
 - Multi-touch (pinch) needs Chromium's DevTools protocol
   (`Input.dispatchTouchEvent`); Chromium fires one `touchstart` per finger.
   Both example games mostly use pointer events.
+- Tool inputs are `z.strictObject`s, so unknown arguments are reported. Over
+  MCP the SDK validates before `Toolbox.call`, so invalid calls there are not
+  in the transcript or the call count.
 - `alert`/`confirm`/`prompt` block the page; they are accepted automatically
   and logged to the console so the agent sees them.
 

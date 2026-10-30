@@ -96,6 +96,19 @@ Merged to `main`. 35 tests pass (`npm test`, about 30 s); typecheck clean.
 
 ---
 
+## To do (from the user, 2026-10-30)
+
+Address these together with the issues and lessons from the first `tome-barrow` run (15 min sample).
+
+| # | Item | Notes |
+|---|---|---|
+| 1 | **Pacing option** | A user setting to make the agent work at most every X seconds (e.g. `limits.min_seconds_per_call` or a `pace` block), default off. For expensive models: spreads use across a subscription's 5-hour window and trades wall time for cost. Nothing like it exists yet (limits are runs, hours, cost and tool calls per run). Decide where the delay goes (between tool calls in `Toolbox.call`, or between model turns), make it work for agent CLIs and API providers alike, and keep real-time games safe (pause the clock while waiting, or document it). |
+| 2 | **Soft limits** | A limit should not cut the agent off mid-thought. Warn it ahead (e.g. a few minutes or a set fraction before `hours` or `cost_usd`) so it can save /memory and call `end_run`, then stop hard after a grace period. Make sure usage and cost are still recorded when an agent CLI is interrupted (`claude -p` may print no final JSON on SIGINT; Claude Code's own session log in `~/.claude/projects/` has per-message usage). |
+| 3 | **Orientation doc** | Check whether the agent writes itself a context doc unprompted (game purpose, core mechanics, style, controls, objectives beyond the task). If it doesn't, consider a general first step for every campaign: build or refresh `/memory/context.md` (or similar) before playing, and re-read it at each run start and after each refresh. A sentence in the framework prompt is preferred over a new mechanism. |
+| 4 | **Cost estimate** | From the first run's usage, estimate the cost per hour and per dungeon level for Opus. Compare with Sonnet before long campaigns. |
+
+---
+
 ## Things to keep in mind
 
 - Keep the framework thin; resist adding supervision. If a real run shows the

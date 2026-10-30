@@ -10,6 +10,7 @@ import { makeConfig, textOf } from './helpers.ts';
 describe('tools against the fixture game', () => {
   let session: Session;
   let box: Toolbox;
+  let startRef = '';
   const call = (name: string, args: unknown = {}) => box.call(name, args);
   const game = async () => JSON.parse(textOf(await call('evaluate', { expression: 'window.game' })));
   const refOf = async (label: string) => {
@@ -38,10 +39,23 @@ describe('tools against the fixture game', () => {
   });
 
   test('read_page gives refs that act can click', async () => {
-    const start = await refOf('Start');
-    const result = await call('act', { actions: [{ do: 'click', at: start }] });
+    startRef = await refOf('Start');
+    const result = await call('act', { actions: [{ do: 'click', at: startRef }] });
     assert.match(textOf(result), /1\. click e\d+: ok/);
     assert.equal((await game()).state, 'playing');
+  });
+
+  test('canvas-only screens, stale refs and unknown arguments are explained', async () => {
+    assert.match(textOf(await call('read_page')), /accessibility tree is empty/);
+    assert.match(textOf(await call('read_page', { find: 'Start' })), /accessibility tree is empty/);
+    await call('clock', { action: 'pause' });
+    const stale = await call('act', { actions: [{ do: 'click', at: startRef }] });
+    assert.match(textOf(stale), new RegExp(`FAILED — .*${startRef} may be hidden, covered or gone`));
+    const look = await call('look', { zoom: 2 });
+    assert.ok(look.isError);
+    assert.match(textOf(look), /Unrecognized key.*zoom/);
+    assert.match(textOf(await call('act', { actions: [{ do: 'key', key: 'ArrowLeft', hold_ms: 100 }] })), /actions\.0: Unrecognized key.*hold_ms/);
+    await call('clock', { action: 'resume' });
   });
 
   test('a paused clock freezes the game; holds and waits advance it', async () => {

@@ -52,7 +52,7 @@ async function pageLine(session: Session): Promise<string> {
 
 const ACTIONS = ['click', 'tap', 'hover', 'long_press', 'drag', 'swipe', 'pinch', 'key', 'keys', 'type', 'scroll', 'wait', 'goto', 'reload', 'back'] as const;
 
-const ActionSchema = z.object({
+const ActionSchema = z.strictObject({
   do: z.enum(ACTIONS),
   at: z.string().optional().describe('Target: a ref from read_page ("e12"), a grid cell from look ("F7", upper case), or CSS pixels "x,y".'),
   to: z.string().optional().describe('drag: destination target, same forms as at.'),
@@ -263,7 +263,7 @@ export function createTools(session: Session): Tool[] {
       'grid overlays labelled cells (true = 64 px cells, or a number for the cell size) for aiming at canvas content by cell name. ' +
       'region [x,y,w,h] zooms in at device resolution. save_as copies the image to /run or /memory (e.g. "/run/findings/menu-overlap.jpg"). ' +
       'Every screenshot is also kept under /run/shots.',
-    input: z.object({
+    input: z.strictObject({
       grid: z.union([z.boolean(), z.number().int().min(16).max(400)]).optional(),
       region: z.array(z.number()).length(4).optional().describe('[x, y, width, height] in CSS px'),
       save_as: z.string().optional(),
@@ -288,14 +288,15 @@ export function createTools(session: Session): Tool[] {
       'Accessibility snapshot of the page: roles, names, text and refs like [ref=e12] to target with act. ' +
       'Best for menus, dialogs, HUD text and forms; canvas content is not described (use look). ' +
       'boxes adds [box=x,y,w,h] in CSS px. find keeps only lines containing that text (case-insensitive).',
-    input: z.object({
+    input: z.strictObject({
       boxes: z.boolean().optional(),
       find: z.string().optional(),
       depth: z.number().int().positive().optional(),
     }),
     async run({ boxes, find, depth }) {
       let snap = await browser.page.ariaSnapshot({ mode: 'ai', boxes: boxes ?? false, depth, timeout: 20_000 });
-      if (find) {
+      if (!snap.trim()) snap = '(The accessibility tree is empty: what is on screen is probably all canvas. Use look.)';
+      else if (find) {
         const needle = find.toLowerCase();
         const hits = snap.split('\n').filter((l) => l.toLowerCase().includes(needle));
         snap = hits.length ? hits.join('\n') : `No lines contain "${find}".`;
@@ -314,7 +315,7 @@ export function createTools(session: Session): Tool[] {
       'Targets: a ref from read_page ("e12"), a grid cell from look ("F7"), or "x,y" in CSS px. ' +
       'While the clock is paused, waits, holds and gestures advance game time by their ms and nothing else moves time. ' +
       'look_after returns a screenshot once the batch is done.',
-    input: z.object({
+    input: z.strictObject({
       actions: z.array(ActionSchema).min(1).max(50),
       look_after: z.boolean().optional(),
     }),
@@ -326,7 +327,9 @@ export function createTools(session: Session): Tool[] {
           const note = await runAction(session, a);
           lines.push(`${i + 1}. ${describeAction(a)}: ok${note ? ` (${note})` : ''}`);
         } catch (err) {
-          lines.push(`${i + 1}. ${describeAction(a)}: FAILED — ${firstLine(err)}`);
+          const ref = [a.at, a.to].find((t) => t && REF.test(t) && String(err).includes(t)) ?? [a.at, a.to].find((t) => t && REF.test(t));
+          const stale = ref && /timeout|not visible/i.test(String(err)) ? ` (${ref} may be hidden, covered or gone: read_page gives current refs)` : '';
+          lines.push(`${i + 1}. ${describeAction(a)}: FAILED — ${firstLine(err)}${stale}`);
           if (i < actions.length - 1) lines.push(`(${actions.length - i - 1} remaining action(s) not run)`);
           break;
         }
@@ -342,7 +345,7 @@ export function createTools(session: Session): Tool[] {
     description:
       'Browser console messages, uncaught page errors, failed or 4xx/5xx network requests and auto-accepted dialogs. ' +
       'By default returns what is new since the last call; all returns everything kept for this run. problems_only drops logs and info.',
-    input: z.object({
+    input: z.strictObject({
       all: z.boolean().optional(),
       problems_only: z.boolean().optional(),
       limit: z.number().int().positive().max(500).optional(),
@@ -365,7 +368,7 @@ export function createTools(session: Session): Tool[] {
         'pause freezes the game while you think; advance {ms} runs it forward by that much game time; resume returns to real time. ' +
         'Not covered: Web Audio, CSS animations and timers inside Web Workers. Inputs still reach the page while paused, ' +
         'but the game only reacts as time advances. Use it if pausing suits the game and your instructions.',
-      input: z.object({
+      input: z.strictObject({
         action: z.enum(['pause', 'resume', 'advance', 'status']),
         ms: z.number().int().positive().max(3_600_000).optional(),
       }),
@@ -387,7 +390,7 @@ export function createTools(session: Session): Tool[] {
       'Change the emulated device or screen. orientation and viewport resize the page in place (like rotating a phone). ' +
       'device changes the device profile (touch, user agent, pixel ratio) and restart reopens the browser: both reload the page at its current URL, ' +
       'so in-memory game state is lost while saved data (localStorage, IndexedDB, cookies) is kept. Call with no arguments to see the current setup.',
-    input: z.object({
+    input: z.strictObject({
       device: z.string().optional().describe('"desktop" or a Playwright device name, e.g. "Pixel 7", "iPhone 15", "iPad Pro 11".'),
       orientation: z.enum(['portrait', 'landscape']).optional(),
       viewport: z.array(z.number().int().positive()).length(2).nullable().optional().describe('[width, height] in CSS px; null returns to the device default.'),
@@ -423,7 +426,7 @@ export function createTools(session: Session): Tool[] {
     tools.push({
       name: 'evaluate',
       description: 'Developer access: evaluate a JavaScript expression in the page and return its JSON value. Promises are awaited.',
-      input: z.object({ expression: z.string().min(1) }),
+      input: z.strictObject({ expression: z.string().min(1) }),
       async run({ expression }) {
         const value = await browser.page.evaluate(expression);
         return [text(value === undefined ? 'undefined' : JSON.stringify(value, null, 2) ?? String(value))];
@@ -438,7 +441,7 @@ export function createTools(session: Session): Tool[] {
       '/run is this run (write logs, reports, findings there). /runs holds every run of this campaign, read-only. ' +
       'Commands: view {path, view_range?} (directories list their contents) · create {path, file_text} · ' +
       'str_replace {path, old_str, new_str} (old_str must be unique) · insert {path, insert_line, insert_text} · delete {path} · rename {old_path, new_path}.',
-    input: z.object({
+    input: z.strictObject({
       command: z.enum(['view', 'create', 'str_replace', 'insert', 'delete', 'rename']),
       path: z.string().optional(),
       view_range: z.array(z.number().int()).length(2).optional().describe('[first line, last line]; -1 for the end'),
@@ -471,7 +474,7 @@ export function createTools(session: Session): Tool[] {
   tools.push({
     name: 'status',
     description: 'Elapsed wall time, run number, turns, tokens, cost and the hard limits with what remains.',
-    input: z.object({}),
+    input: z.strictObject({}),
     async run() {
       const { limits } = config;
       const left = (used: number, limit: number | null, fmt: (n: number) => string) => (limit === null ? 'no limit' : `limit ${fmt(limit)}, ${fmt(Math.max(0, limit - used))} left`);
@@ -496,7 +499,7 @@ export function createTools(session: Session): Tool[] {
   tools.push({
     name: 'notify',
     description: 'Send the user a notification now. Use it for what they would want to know straight away: a serious finding, a milestone, a problem you cannot get past.',
-    input: z.object({
+    input: z.strictObject({
       title: z.string().min(1).max(120),
       message: z.string().min(1).max(1000),
       level: z.enum(['info', 'finding', 'milestone', 'problem']).optional(),
@@ -511,7 +514,7 @@ export function createTools(session: Session): Tool[] {
     description:
       'End this run. Before calling, record in /memory what you learned and what to try next. ' +
       'next "new_run" starts a fresh run (the page reopens at the game URL; /memory carries over); "done" ends the campaign.',
-    input: z.object({
+    input: z.strictObject({
       summary: z.string().min(1).max(4000),
       next: z.enum(['new_run', 'done']),
     }),

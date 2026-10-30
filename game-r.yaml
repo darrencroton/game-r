@@ -64,6 +64,16 @@ campaigns:
       reproduce, what you expected, what happened and a saved screenshot. Notify me of serious ones.
       Work for about 6 hours of wall time, starting new runs (new heroes) when it helps.
 
+  tome-barrow:
+    url: https://darrencroton.github.io/tales-of-middle-earth/
+    browser: { device: "Pixel 7", headless: false }
+    limits: { runs: 1, hours: 0.25 }   # first sample: usage, cost and how the agent copes; raise to continue
+    instructions: |
+      Goal: create a new hero and take them to the bottom of the Barrow-downs, the first dungeon
+      (dungeon level 10, 500 ft), alive. Play as a phone player would, through the game's own UI.
+      Keep a short progress log in /run/log.md (time, depth, character level, hit points, notable events).
+      Notify me when you reach each new dungeon level, and if the hero dies.
+
   drones-score:
     url: https://simonw.github.io/battledrones/
     model: { provider: codex, name: null }
