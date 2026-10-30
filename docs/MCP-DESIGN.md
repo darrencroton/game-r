@@ -1,9 +1,9 @@
-# game-r — design (draft 0.4)
+# game-r — design (draft 0.5)
 
 An engine where an LLM plays and tests HTML web-app games from a URL, under the
 user's instructions, for hours to days, and learns from run to run.
 
-> Status: steps 1 and 2 built (tools, MCP server, engine loop, OpenAI-compatible adapter). Next: the Anthropic adapter and live runs on the example games. See §10 and `HANDOFF.md`.
+> Status: steps 1–2b built (tools, MCP server, engine, agent CLI players, OpenAI-compatible provider). Next: hand-played tests and first runs on the example games. See §10 and `HANDOFF.md`.
 
 ---
 
@@ -54,22 +54,36 @@ set directly on the Playwright library instead.
 game-r.yaml ──► game-r run <campaign>
                     │
                     ▼
-        ┌──────────── engine ─────────────┐
-        │ loop: model ⇄ tools             │◄── model API (Anthropic or
-        │ context refresh · limits · logs │    any OpenAI-compatible)
-        │ tools (one registry) ───────────┼──► game-r mcp  (same tools for
-        │   browser · workspace · run     │    Claude Code / any MCP client)
-        └───────┬─────────────────┬───────┘
-                ▼                 ▼
-          Playwright        runs/<campaign>/
-          browser           memory/ · run-001/ · run-002/ …
+        ┌────────────── engine ───────────────┐
+        │ campaign: runs · limits · logs       │
+        │ tools (one registry) ────────────────┼──► game-r mcp (stdio, for any MCP client)
+        │   browser · workspace · run          │
+        │ player, one of:                      │
+        │  ├ agent CLI: claude -p / codex exec ◄┼── tools over loopback HTTP MCP (bearer token)
+        │  └ own loop over a model API ────────┼──► OpenAI-compatible (OpenCode Go, OpenAI, …)
+        └───────┬──────────────────┬───────────┘
+                ▼                  ▼
+          Playwright         runs/<campaign>/
+          browser            memory/ · run-001/ · run-002/ …
 ```
 
-- **`game-r run <campaign>`** — the engine runs its own loop against the
-  configured model. This is the mode for long, unattended campaigns.
-- **`game-r mcp <campaign>`** — serves the same tools over MCP (stdio), same
-  campaign directory and config, so Claude Code or another client can play or
-  poke at a game interactively. No separate code path.
+- **`game-r run <campaign>`** runs a campaign unattended. The player is either
+  an **agent CLI** on the user's subscription (`claude-code`: Claude Code's
+  `claude -p`; `codex`: `codex exec`), or game-r's **own loop** over a model
+  API (`openai-compatible`; `anthropic` later). Either way game-r owns the
+  campaign: the browser, the tools, runs, limits, memory and logs.
+- **Agent CLIs** get only game-r's tools, over a loopback Streamable HTTP MCP
+  server guarded by a random bearer token: Claude Code with `--tools ""` and
+  `--strict-mcp-config`, Codex with its shell tool switched off. The prompt
+  goes in as the system prompt (Claude Code) or developer instructions
+  (Codex). When the CLI ends its turn, game-r resumes the same session with a
+  nudge; each new run starts a fresh session from /memory; the CLI compacts its
+  own context. Failures (such as a subscription's usage limit) back off from a
+  minute up to an hour and retry, up to 8 times; three sessions in a row with
+  no tool call end the campaign.
+- **`game-r mcp <campaign>`** serves the same tools over stdio, same campaign
+  directory and config, so Claude Code or another client can play or poke at a
+  game interactively. No separate code path.
 
 ---
 
@@ -177,9 +191,9 @@ suits the game and its instructions.
 
 ---
 
-## 6. The loop
+## 6. The loop (API providers)
 
-`src/engine.ts`. One conversation per context; each conversation is
+`src/engine.ts`; agent CLIs are driven by `src/agent.ts` instead (§3). One conversation per context; each conversation is
 **append-only** in the provider's own message format.
 
 ```
@@ -271,7 +285,7 @@ Elapsed time and usage are cumulative across processes (read back from
 | Browser | `playwright` 1.63.0 (pinned to the browsers installed in the cloud environment) |
 | MCP | `@modelcontextprotocol/sdk` (+ `zod` 4, which also gives the tools' JSON Schemas) |
 | Config | `yaml` |
-| Models | OpenAI-compatible Chat Completions over `fetch` (OpenAI, Gemini's compatible endpoint, OpenRouter, Ollama, LM Studio, vLLM). Anthropic via the official `@anthropic-ai/sdk` (pending approval; Anthropic's guidance is to use the SDK, not raw HTTP, in TypeScript) |
+| Players | Agent CLIs on subscriptions: Claude Code (`claude -p`) and Codex (`codex exec`), spawned headless. Model APIs: OpenAI-compatible Chat Completions over `fetch` (OpenCode Go, OpenAI, OpenRouter, Ollama, LM Studio, vLLM). An Anthropic API provider would use `@anthropic-ai/sdk` (deferred) |
 | Logs | JSONL + files (no database) |
 
 ---
@@ -281,10 +295,11 @@ Elapsed time and usage are cumulative across processes (read back from
 | Step | Delivers | Check | Status |
 |---|---|---|---|
 | 1 | Config loader, browser tools, `files`, `status`, `notify`, `end_run`, workspace, `game-r mcp` | Tests against a fixture game; an agent plays through the tools | **Built.** Played the fixture turn by turn on paused time |
-| 2 | Engine loop (`game-r run`, `stop`), context refresh, usage and cost, limits, OpenAI-compatible adapter | Loop tests against a mock model server | **Built** (28 tests in total) |
-| 2b | Anthropic adapter (`@anthropic-ai/sdk`): adaptive thinking + effort, caching, images in tool results, thinking blocks passed back unchanged, server-side tool-result clearing | A live run on the fixture | Needs approval for the package and an API key |
-| 3 | Both example games, live | Short campaigns on ToME and Battle Drones through `game-r run` and through MCP | Needs `*.github.io` network access |
+| 2 | Engine loop (`game-r run`, `stop`), context refresh, usage and cost, limits, OpenAI-compatible provider | Loop tests against a mock model server | **Built** |
+| 2b | Agent CLI players (Claude Code, Codex) over HTTP MCP; OpenCode Go support (headers, `vision`) | Fake-CLI tests; a real Claude Code smoke run | **Built** (34 tests). Claude Code verified for real; Codex and OpenCode Go await access |
+| 3 | Both example games, live | Hand-played tool checks, then short campaigns per provider | Next (see `HANDOFF.md`) |
 | 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory | |
+| — | Anthropic API provider | — | Deferred: subscriptions cover Claude |
 
 ## 11. Future work
 

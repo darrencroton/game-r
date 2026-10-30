@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Config } from './config.ts';
 import { apiKey, FatalModelError, postJson, textOfResult, withRetries, type Conversation, type Provider, type Reply, type RetryListener, type ToolCall, type ToolSpec } from './model.ts';
 import type { Content, ToolResult } from './tools.ts';
@@ -7,8 +8,6 @@ type Message =
   | { role: 'system' | 'user'; content: string | Part[] }
   | { role: 'assistant'; content: string | null; tool_calls?: unknown[] }
   | { role: 'tool'; tool_call_id: string; content: string };
-
-const EFFORT: Record<string, string | null> = { off: null, low: 'low', medium: 'medium', high: 'high', xhigh: 'high', max: 'high' };
 
 function parts(content: Content[]): Part[] {
   return content.map((c) => (c.type === 'text' ? { type: 'text', text: c.text } : { type: 'image_url', image_url: { url: `data:${c.mimeType};base64,${c.data}` } }));
@@ -22,6 +21,7 @@ export class OpenAICompatible implements Provider {
 
   constructor(model: Config['model']) {
     if (!model.base_url) throw new FatalModelError('provider openai-compatible needs model.base_url, e.g. https://api.openai.com/v1');
+    if (!model.name) throw new FatalModelError('provider openai-compatible needs model.name');
     this.model = model;
     this.url = model.base_url.replace(/\/+$/, '') + '/chat/completions';
     const key = apiKey(model);
@@ -39,17 +39,20 @@ class OpenAIConversation implements Conversation {
   private readonly url: string;
   private readonly headers: Record<string, string>;
   private readonly onRetry: RetryListener;
+  private readonly vision: boolean;
   contextTokens = 0;
 
   constructor(model: Config['model'], url: string, headers: Record<string, string>, system: string, tools: ToolSpec[], onRetry: RetryListener) {
     this.url = url;
-    this.headers = headers;
+    const conversation = randomUUID();
+    this.headers = { ...Object.fromEntries(Object.entries(model.headers).map(([k, v]) => [k, v.replaceAll('{conversation}', conversation)])), ...headers };
     this.onRetry = onRetry;
+    this.vision = model.vision;
     this.messages = [{ role: 'system', content: system }];
-    const effort = EFFORT[model.reasoning];
+    const effort = model.reasoning === 'off' ? null : model.reasoning;
     const officialOpenAI = new URL(url).hostname === 'api.openai.com';
     this.body = {
-      model: model.name,
+      model: model.name!,
       tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.schema } })),
       [officialOpenAI ? 'max_completion_tokens' : 'max_tokens']: model.max_output_tokens,
       ...(effort ? { reasoning_effort: effort } : {}),
@@ -57,14 +60,19 @@ class OpenAIConversation implements Conversation {
   }
 
   user(content: Content[]): void {
-    this.messages.push({ role: 'user', content: parts(content) });
+    this.messages.push({ role: 'user', content: parts(this.visible(content)) });
+  }
+
+  private visible(content: Content[]): Content[] {
+    if (this.vision) return content;
+    return content.map((c) => (c.type === 'image' ? { type: 'text', text: `(screenshot ${c.file} not shown: this model has no image input)` } : c));
   }
 
   results(results: { call: ToolCall; result: ToolResult }[], note?: string): void {
     const images: Part[] = [];
     for (const { call, result } of results) {
       this.messages.push({ role: 'tool', tool_call_id: call.id, content: textOfResult(result) });
-      images.push(...parts(result.content.filter((c) => c.type === 'image')));
+      if (this.vision) images.push(...parts(result.content.filter((c) => c.type === 'image')));
     }
     const extra: Part[] = [];
     if (images.length) extra.push({ type: 'text', text: 'Screenshots returned by the tool calls above, in order:' }, ...images);

@@ -1,18 +1,27 @@
 # game-r.yaml — every user option lives here.
 # `defaults` apply to every campaign; a campaign overrides only what it sets.
-# API keys are read from the environment variable named in model.api_key_env, never from this file.
+# Secrets never go in this file: API keys are read from the environment variable named in model.api_key_env.
 
 defaults:
   model:
-    provider: anthropic              # anthropic | openai-compatible
-    name: claude-opus-5-5
-    base_url: null                   # openai-compatible: e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1
-    api_key_env: ANTHROPIC_API_KEY
-    max_output_tokens: 16000
-    reasoning: medium                # off | low | medium | high | xhigh | max (mapped to what the provider supports)
-    # USD per million tokens (Opus 5.5); used for cost and limits.cost_usd.
+    # Who plays:
+    #   claude-code        Claude Code (`claude -p`) on your Claude subscription; plays through game-r's tools over MCP
+    #   codex              Codex CLI (`codex exec`) on your ChatGPT subscription; the same, with its shell tool off
+    #   openai-compatible  game-r's own loop over any Chat Completions API (OpenCode Go, OpenAI, OpenRouter, Ollama…)
+    #   anthropic          game-r's own loop over the Claude API (not built yet; see HANDOFF.md)
+    provider: claude-code
+    name: opus                       # model id or CLI alias (claude-code: opus | sonnet | haiku | full id); null = the CLI's default
+    command: null                    # agent CLIs: path to the executable when it is not `claude` / `codex` on PATH
+    base_url: null                   # openai-compatible: the API's base URL
+    api_key_env: null                # openai-compatible / anthropic: environment variable holding the key
+    headers: {}                      # openai-compatible: extra request headers; "{conversation}" becomes a per-conversation id
+    max_output_tokens: 16000         # openai-compatible / anthropic
+    reasoning: medium                # effort, passed as given (claude-code --effort; codex model_reasoning_effort; reasoning_effort); off = don't send
+    vision: true                     # false for text-only models: screenshots are saved but not sent
+    # USD per million tokens, for cost tracking and limits.cost_usd with API providers. null = not tracked.
+    # Agent CLIs report their own figures (Claude Code: an estimate; on a subscription nothing is billed per token).
     # cache_read / cache_write default to 0.1× and 1.25× input when not given.
-    price_per_mtok: { input: 4, output: 20, cache_read: 0.2 }
+    price_per_mtok: null
   browser:
     engine: chromium                 # chromium | firefox | webkit
     headless: true                   # false to watch it play
@@ -24,12 +33,13 @@ defaults:
   access: player                     # player | developer (developer adds the evaluate tool)
   clock: allowed                     # allowed | off (the agent may pause and advance game time)
   context:
-    refresh_tokens: 200000           # start a fresh context (from /memory) once a request reaches this many input tokens
+    refresh_tokens: 200000           # API providers: start a fresh context (from /memory) at this many input tokens.
+                                     # Agent CLIs manage their own context (auto-compaction); each new run starts a fresh session.
   limits:                            # hard stops; null = no limit
     runs: 10
     hours: 48
-    cost_usd: 50
-    turns_per_run: null
+    cost_usd: null                   # needs price_per_mtok (API providers) or a CLI that reports cost
+    turns_per_run: null              # model turns (API providers) or tool calls (agent CLIs) per run
   notify:
     # Run with $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_EVENT $GAMER_CAMPAIGN set. macOS example:
     # command: osascript -e 'display notification (system attribute "GAMER_MESSAGE") with title (system attribute "GAMER_TITLE")'
@@ -39,6 +49,7 @@ defaults:
   output: ./runs
 
 campaigns:
+  # The two example games. They run on the defaults above (Claude Code, Opus) unless they say otherwise.
   tome-ui:
     url: https://darrencroton.github.io/tales-of-middle-earth/
     browser: { device: "Pixel 7" }
@@ -52,16 +63,35 @@ campaigns:
 
   drones-score:
     url: https://simonw.github.io/battledrones/
-    model: { name: claude-sonnet-5-5, price_per_mtok: { input: 2, output: 10, cache_read: 0.2 } }
-    limits: { runs: 20, cost_usd: 30 }
+    model: { provider: codex, name: null }
+    limits: { runs: 20 }
     instructions: |
       Play a Skirmish on Riverlands against the Normal AI and win as quickly as you can.
       After each match, record the result, the game time it took and what you would change
       in /memory, then start a new run and try to beat your best time.
 
+  # A small local test game (test/fixtures/game.html), one campaign per way of playing, for trying the setup.
   dodge:
     url: ./test/fixtures/game.html
-    model: { name: claude-haiku-5-5, price_per_mtok: { input: 0.1, output: 0.5 } }
-    limits: { runs: 2, hours: 0.25, cost_usd: 1 }
-    instructions: |
+    model: { name: haiku }
+    limits: { runs: 2, hours: 0.25 }
+    instructions: &dodge |
       This is a small test game. Survive as long as you can and report your best score in /run/report.md.
+
+  dodge-codex:
+    url: ./test/fixtures/game.html
+    model: { provider: codex, name: null, reasoning: low }
+    limits: { runs: 2, hours: 0.25 }
+    instructions: *dodge
+
+  dodge-go:
+    url: ./test/fixtures/game.html
+    model:
+      provider: openai-compatible
+      name: glm-5.3-flash            # OpenCode Go model id; glm-5.3-flash takes images. Text-only ones (glm-5.3, kimi-k3…) need vision: false
+      base_url: https://opencode.ai/inference/go/openai/v1
+      api_key_env: OPENCODE_API_KEY
+      headers: { x-opencode-session: "{conversation}" }
+      reasoning: high                # values differ by model (glm: low | high | max)
+    limits: { runs: 2, hours: 0.25 }
+    instructions: *dodge

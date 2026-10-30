@@ -12,7 +12,8 @@ export async function tempDir(): Promise<string> {
 }
 
 export async function makeConfig(over: Record<string, unknown> = {}): Promise<Config> {
-  const base = { name: 'test', url: FIXTURE_URL, instructions: 'Play the game.', output: await tempDir() };
+  // Points agent CLIs at a command that cannot exist.
+  const base = { name: 'test', url: FIXTURE_URL, instructions: 'Play the game.', output: await tempDir(), model: { command: '/nonexistent/agent-cli' } };
   return CampaignSchema.parse(deepMerge(base, over));
 }
 

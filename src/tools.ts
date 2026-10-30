@@ -531,6 +531,7 @@ export class Toolbox {
   readonly tools: Tool[];
   private readonly byName: Map<string, Tool>;
   private readonly session: Session;
+  calls = 0;
 
   constructor(session: Session) {
     this.session = session;
@@ -540,6 +541,7 @@ export class Toolbox {
 
   async call(name: string, args: unknown): Promise<ToolResult> {
     const { session } = this;
+    this.calls += 1;
     const tool = this.byName.get(name);
     let result: ToolResult;
     if (!tool) result = fail(`Unknown tool "${name}".`);

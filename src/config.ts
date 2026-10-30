@@ -3,13 +3,18 @@ import path from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+export const AGENT_CLIS = ['claude-code', 'codex'] as const;
+
 const ModelSchema = z.object({
-  provider: z.enum(['anthropic', 'openai-compatible']).default('anthropic'),
-  name: z.string().default('claude-opus-5-5'),
+  provider: z.enum([...AGENT_CLIS, 'anthropic', 'openai-compatible']).default('claude-code'),
+  name: z.string().nullable().default(null),
+  command: z.string().nullable().default(null),
   base_url: z.string().nullable().default(null),
-  api_key_env: z.string().nullable().default('ANTHROPIC_API_KEY'),
+  api_key_env: z.string().nullable().default(null),
+  headers: z.record(z.string(), z.string()).default({}),
   max_output_tokens: z.number().int().positive().default(16000),
-  reasoning: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+  reasoning: z.string().default('medium'),
+  vision: z.boolean().default(true),
   price_per_mtok: z
     .object({
       input: z.number().nonnegative(),

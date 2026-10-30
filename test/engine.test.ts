@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { runCampaign } from '../src/engine.ts';
+import { deepMerge } from '../src/config.ts';
 import { cost, FatalModelError, HttpError, withRetries } from '../src/model.ts';
 import { makeConfig } from './helpers.ts';
 
@@ -14,10 +15,12 @@ type Reply = { text?: string; calls?: [string, unknown][]; prompt?: number; stat
 /** A Chat Completions server that answers with scripted replies and records every request. */
 async function mockModel(script: Reply[]) {
   const requests: any[] = [];
+  const headers: http.IncomingHttpHeaders[] = [];
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     requests.push(JSON.parse(body));
+    headers.push(req.headers);
     const step = script[requests.length - 1] ?? { text: 'out of script' };
     if (step.status) {
       res.writeHead(step.status, { 'content-type': 'application/json' }).end('{"error":"scripted"}');
@@ -34,14 +37,11 @@ async function mockModel(script: Reply[]) {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
-  return { url, requests, close: () => server.close() };
+  return { url, requests, headers, close: () => server.close() };
 }
 
 async function campaign(url: string, over: Record<string, unknown> = {}) {
-  return makeConfig({
-    model: { provider: 'openai-compatible', name: 'mock', base_url: url, api_key_env: null, price_per_mtok: { input: 2, output: 10 } },
-    ...over,
-  });
+  return makeConfig(deepMerge({ model: { provider: 'openai-compatible', name: 'mock', base_url: url, api_key_env: null, price_per_mtok: { input: 2, output: 10 } } }, over));
 }
 
 const lines: string[] = [];
@@ -117,6 +117,26 @@ describe('engine loop', () => {
     }
   });
 
+  test('OpenCode Go style: per-conversation headers, raw reasoning values, no images for a text-only model', async () => {
+    const mock = await mockModel([{ calls: [['look', {}]] }, { calls: [['end_run', { summary: 'Done.', next: 'done' }]] }]);
+    try {
+      process.env.TEST_GO_KEY = 'go-key';
+      const config = await campaign(mock.url, {
+        model: { api_key_env: 'TEST_GO_KEY', headers: { 'x-opencode-session': '{conversation}' }, reasoning: 'max', vision: false },
+      });
+      await runCampaign(config, { log });
+      const [first, second] = mock.requests;
+      assert.equal(mock.headers[0]!.authorization, 'Bearer go-key');
+      assert.match(String(mock.headers[0]!['x-opencode-session']), /^[0-9a-f-]{36}$/);
+      assert.equal(mock.headers[1]!['x-opencode-session'], mock.headers[0]!['x-opencode-session']);
+      assert.equal(first.reasoning_effort, 'max');
+      assert.match(first.messages[0].content, /You cannot see images/);
+      assert.doesNotMatch(JSON.stringify(second.messages), /image_url/);
+    } finally {
+      mock.close();
+    }
+  });
+
   test('nudges an agent that stops using tools, and ends after three idle replies', async () => {
     const mock = await mockModel([{ text: 'Thinking aloud.' }, { text: 'Still thinking.' }, { text: 'Hmm.' }]);
     try {
@@ -150,7 +170,7 @@ describe('engine loop', () => {
   });
 
   test('the anthropic provider explains what it still needs', async () => {
-    await assert.rejects(runCampaign(await makeConfig(), { log }), /needs @anthropic-ai\/sdk/);
+    await assert.rejects(runCampaign(await makeConfig({ model: { provider: 'anthropic', name: 'claude-opus-5-5' } }), { log }), /needs @anthropic-ai\/sdk/);
   });
 });
 

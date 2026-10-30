@@ -68,9 +68,9 @@ export class Session {
     else await this.startRun();
   }
 
-  addUsage(tokens: TokenUsage, costUsd: number): void {
-    this.usage.turns += 1;
-    this.turnsThisRun += 1;
+  addUsage(tokens: TokenUsage, costUsd: number, turns = 1): void {
+    this.usage.turns += turns;
+    this.turnsThisRun += turns;
     this.usage.input_tokens += tokens.input + tokens.cache_read + tokens.cache_write;
     this.usage.output_tokens += tokens.output;
     this.usage.cost_usd += costUsd;

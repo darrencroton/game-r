@@ -28,9 +28,13 @@ Read these first:
   side. Local only.
 - **Autonomous with notifications** (`notify.command`). Live steering is future
   work.
+- **Runs use the user's subscriptions**: Claude (through Claude Code) and
+  ChatGPT (through Codex), plus an OpenCode Go API key. API-key providers are
+  secondary.
 - **Never install packages without asking.** Approved so far: `playwright`
-  (pinned 1.63.0), `@modelcontextprotocol/sdk`, `zod`, `yaml`. Pending:
-  `@anthropic-ai/sdk` (see `HANDOFF.md`).
+  (pinned 1.63.0), `@modelcontextprotocol/sdk`, `zod`, `yaml`.
+  `@anthropic-ai/sdk` was asked about and deferred (only needed for the
+  Anthropic API provider).
 - Writing: UK English; concise; headings and tables. Code comments say what
   the code does, not why, and stay sparse. The user is on macOS (zsh), in
   Melbourne.
@@ -46,17 +50,18 @@ src/browser.ts    Playwright: persistent context, devices, console capture, cloc
 src/files.ts      the files tool's backend: /memory (rw), /run (rw), /runs (ro)
 src/tools.ts      the tool registry (zod inputs) and Toolbox.call (validate, run, log, never throw)
 src/prompt.ts     the framework system prompt + the campaign's instructions
-src/mcp.ts        `game-r mcp`: the tools over MCP stdio, with the prompt as server instructions
-src/engine.ts     `game-r run`: the model loop, openings, refresh, nudges, limits, stop
+src/mcp.ts        the tools as an MCP server: stdio (`game-r mcp`) or loopback HTTP with a bearer token (for agent CLIs)
+src/engine.ts     `game-r run`: shared set-up, stop and errors; the model loop (openings, refresh, nudges, limits)
+src/agent.ts      `game-r run` with an agent CLI: claude-code (`claude -p`) or codex (`codex exec`) playing over HTTP MCP
 src/model.ts      provider interface, retries, cost, createProvider
-src/openai.ts     OpenAI-compatible Chat Completions provider (fetch)
-test/             node:test; fixtures/game.html is a small canvas game used by the tests
+src/openai.ts     OpenAI-compatible Chat Completions provider (fetch); headers, vision switch
+test/             node:test; fixtures/game.html is a small canvas game; fixtures/fake-agent.mjs fakes both CLIs
 ```
 
 ## Commands
 
 ```zsh
-npm test                                   # 28 tests, ~25 s, real headless Chromium
+npm test                                   # 34 tests, ~30 s, real headless Chromium
 npx tsc --noEmit                           # needs typescript (not a dependency; see below)
 node src/cli.ts list | config <c> | status [c] | run <c> | stop <c> | mcp <c>
 ```
@@ -140,6 +145,42 @@ tsc --noEmit -p . --typeRoots /opt/node-tools/node_modules/@types
   `api.openai.com` wants `max_completion_tokens`; other servers `max_tokens`.
   `reasoning_effort` is only sent when `reasoning` is not `off`.
 
+**Agent CLIs (subscriptions)**
+- Claude Code: `claude -p` with `--output-format json`, `--system-prompt`,
+  `--mcp-config '{"mcpServers":{"gamer":{"type":"http","url":…,"headers":…}}}'`,
+  `--strict-mcp-config`, `--tools ""` (no built-in tools), `--allowedTools
+  mcp__gamer`, `--permission-prompts none`, `--model`, `--effort`,
+  `--resume <session_id>`. Never `--bare`: bare mode ignores subscription
+  logins and `CLAUDE_CODE_OAUTH_TOKEN`. With `--resume`, `total_cost_usd` is
+  the session's running total, so game-r records the difference.
+- Inside a Claude Code cloud session a nested `claude -p` runs on the user's
+  subscription, but it inherits `CLAUDE_CODE_SESSION_ID` and would reuse the
+  outer session's id; `src/agent.ts` removes it (and two related variables).
+- Codex: `codex exec --json` (JSONL events `thread.started` → `thread_id`,
+  `turn.completed` → `usage`, `turn.failed`, `item.completed`), `resume <id>
+  <prompt>` after the options, `-c` TOML overrides for the MCP server (`url`,
+  `bearer_token_env_var`, `default_tools_approval_mode="approve"`,
+  `required`), `features.shell_tool=false`, `developer_instructions`,
+  `model_reasoning_effort`, `--ignore-user-config` (auth still from
+  `~/.codex`), `-s read-only`. Headless sign-in: `codex login --device-auth`.
+  The docs site is `developers.openai.com`; when it is blocked, read the
+  source on github.com (`openai/codex`, `codex-rs/exec/src/cli.rs`,
+  `codex-rs/config/src/mcp_types.rs`).
+- OpenCode Go: Chat Completions at `https://opencode.ai/inference/go/openai/v1`
+  (Bearer `OPENCODE_API_KEY`, plus an `x-opencode-session` affinity header).
+  Some models use other APIs (Responses, Messages, Gemini). Most of its strong
+  models are text-only (set `vision: false`); `glm-5.3-flash` takes images.
+  Reasoning values differ by model. The source of truth is `sst/models.dev`
+  → `providers/opencode-go`.
+- **Tests must never start a real agent CLI**: it spends the user's
+  subscription. `test/helpers.ts` points `model.command` at a non-existent
+  path, and tests merge overrides with `deepMerge` (a shallow spread once
+  replaced the whole model block, fell back to the default provider and ran
+  the real `claude`). Real checks: tiny, deliberate, announced (Haiku, low
+  effort, `hours: 0.03`).
+- `events.once(child, 'close')` rejects when the child emits `error` (for
+  example ENOENT); `src/agent.ts` uses its own `finished()` helper.
+
 **The cloud environment (Claude Code on the web)**
 - Playwright's browsers are preinstalled at `/opt/pw-browsers`
   (`PLAYWRIGHT_BROWSERS_PATH`). Never run `playwright install`; keep
@@ -147,14 +188,14 @@ tsc --noEmit -p . --typeRoots /opt/node-tools/node_modules/@types
 - An MCP stdio client passes the server only a minimal environment, which
   drops `PLAYWRIGHT_BROWSERS_PATH`; `test/mcp.test.ts` passes `process.env`
   through. On a normal Mac install browsers are in the default cache.
-- Network: github.com (clone) and the npm registry work; `arxiv.org`,
-  `dev.to`, `latent.space` and `*.github.io` were blocked in the first
-  session (the user is adding `*.github.io`).
+- Network: github.com (clone) and the npm registry work. Blocked in the first
+  session: `arxiv.org`, `dev.to`, `latent.space`, `*.github.io`, `opencode.ai`,
+  `developers.openai.com` (the user is adding the ones `HANDOFF.md` lists).
 - Running `npm ci` in a cloned third-party game repo was refused by the
   sandbox's safety check (it runs third-party install scripts). Don't retry
   or work around it; use the live github.io builds. ToME's build also needs
   the Emscripten SDK.
-- No `ANTHROPIC_API_KEY` was set in the first session.
+- No `ANTHROPIC_API_KEY` was set in the first session; the Claude subscription works through `claude -p`.
 - A stop hook asks for everything to be committed and pushed before a turn
   ends. Work on a branch (`claude/...`), never `main`.
 - Don't `pkill -f <pattern>` from Bash: the pattern also matches the shell
