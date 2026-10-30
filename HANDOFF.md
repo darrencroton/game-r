@@ -106,6 +106,17 @@ Address these together with the issues and lessons from the first `tome-barrow` 
 | 2 | **Soft limits** | A limit should not cut the agent off mid-thought. Warn it ahead (e.g. a few minutes or a set fraction before `hours` or `cost_usd`) so it can save /memory and call `end_run`, then stop hard after a grace period. Make sure usage and cost are still recorded when an agent CLI is interrupted (`claude -p` may print no final JSON on SIGINT; Claude Code's own session log in `~/.claude/projects/` has per-message usage). |
 | 3 | **Orientation doc** | Check whether the agent writes itself a context doc unprompted (game purpose, core mechanics, style, controls, objectives beyond the task). If it doesn't, consider a general first step for every campaign: build or refresh `/memory/context.md` (or similar) before playing, and re-read it at each run start and after each refresh. A sentence in the framework prompt is preferred over a new mechanism. |
 | 4 | **Cost estimate** | From the first run's usage, estimate the cost per hour and per dungeon level for Opus. Compare with Sonnet before long campaigns. |
+| 5 | **Agent's sense of time** | First run: the agent never called `status`, believed its 15 minutes were up after 3.4, invented clock times in its log, and ended the campaign. Candidate fix: show wall time used against the limit in every tool result's status line (e.g. `run 3m24s of 15m`), so time is always in view without a call. |
+| 6 | **`done` too early** | It ended with `next: done` although the goal was unmet. Candidate fix: one framework-prompt sentence: `done` only when the instructions are complete or cannot be completed; otherwise `new_run`. |
+
+### First `tome-barrow` run (2026-10-30, Opus, medium effort, Pixel 7)
+
+- **Usage:** 3.4 min, 41 tool calls (about 12 a minute), $0.76 Claude Code estimate (1.06M cache-read, 47k cache-write, 8.5k output tokens), about 26k tokens of context per call. That is about $13 an hour at the start, rising as the context grows until Claude Code compacts.
+- **Character creation:** smooth, about 1 minute and 9 calls, but it accepted the defaults (Beorning Warrior) by tapping *Choose* on each screen rather than choosing a build.
+- **Play:** the contextual toolbar button did most of the work ("Way down" walks from Bree to the dungeon). It went down without wearing its starting chain mail and without potions, and a newt took it to 0 HP on level 1. It survived, rested, and wore the armour after that.
+- **Notes:** `/memory/notes.md` (written 2.3 minutes in) holds UI coordinates, status and lessons, but no orientation (game purpose, mechanics, how to survive). It never opened the game's *How to play*. This supports item 3.
+- **Tools:** no tool errors. Taps by coordinate, typing, waits and `look_after` all worked; `read_page` was used once; the clock was never paused (turn-based game). `ping-me` delivered the milestone. Screenshots render the game cleanly in headed Chromium.
+- **The hero:** Bram is alive at 50 ft. `profile: campaign` keeps the browser storage, so the next run can probably continue him.
 
 ---
 
