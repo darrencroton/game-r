@@ -6,31 +6,33 @@ Read these first:
 
 | File | What it holds |
 |---|---|
-| `HANDOFF.md` | Current state, what is verified, the next steps in order, open decisions |
 | `docs/MCP-DESIGN.md` | The design: principles, tools, loop, on-disk layout, build order, future work |
-| `game-r.yaml` | Every user option, commented, with example campaigns |
+| `game-r.yaml` | Every user option, commented, with example campaigns; personal settings and campaigns go in the gitignored `game-r.local.yaml`, merged over it |
+| `local/` (if present) | Gitignored, the maintainer's own: `local/AGENTS.md` (their machine and working rules: **read it too**), `local/HANDOFF.md` (current state, next steps, open decisions), run reports |
 
-## The user's direction (most important)
+## The maintainer's direction (most important)
 
 - **KISS and DRY.** A thin framework: a browser, a workspace and a few tools.
   One config file. One tool registry shared by MCP and the engine loop.
 - **The agent does the job.** Planning, notes, time-keeping, reporting and bug
   hunting belong to the agent, guided by the user's instructions. Do not add
   supervisor models, scripted stall detectors, goal checkers or other layers
-  that second-guess it: the user called these brittle. Build a tool only where
+  that second-guess it: the maintainer called these brittle. Build a tool only where
   the agent needs one. Ideas of that kind live in the design doc's *Future
   work* list and must earn their place by measured improvement first.
 - **Game-agnostic.** Nothing in `src/` knows about a particular game. Game
   knowledge goes in a campaign's `instructions`.
 - **All user options in `game-r.yaml`**, with comments and defaults. API keys
   never in it: named in the config, read from the environment or `.env`.
+  Ship only generic examples there; personal campaigns, hosts and notify
+  commands belong in `game-r.local.yaml`, run results and notes in `local/`.
 - **Self-contained runs on disk** (`runs/<campaign>/`), so campaigns run side by
   side. Local only.
 - **Autonomous with notifications** (`notify.command`). Live steering is future
   work.
-- **Runs use the user's subscriptions**: Claude (through Claude Code) and
-  ChatGPT (through Codex), plus an OpenCode Go API key. API-key providers are
-  secondary.
+- **Runs use subscriptions first**: Claude (through Claude Code) and
+  ChatGPT (through Codex). API-key providers (OpenCode Go, local servers)
+  come second.
 - **Never install packages without asking.** Approved so far: `playwright`
   (pinned 1.63.0), `@modelcontextprotocol/sdk`, `zod`, `yaml`; dev:
   `typescript` (7.0.2), `@types/node` (22.x, matching the oldest supported Node).
@@ -40,14 +42,13 @@ Read these first:
   without touching `process.env`; an environment variable wins. Never print it.
 - **New users run `./setup.sh`.** Keep it working when setup needs change.
 - Writing: UK English; concise; headings and tables. Code comments say what
-  the code does, not why, and stay sparse. The user is on macOS (zsh), in
-  Melbourne.
+  the code does, not why, and stay sparse.
 
 ## Layout
 
 ```
 src/cli.ts        commands: run, stop, mcp, status, config, list
-src/config.ts     zod schema for game-r.yaml; defaults → campaign merge; path resolution
+src/config.ts     zod schema for game-r.yaml; the game-r.local.yaml overlay; defaults → campaign merge; path resolution
 src/workspace.ts  campaign directory, lock, run folders (run.json, report from template, log.md), ledger, memory templates, status.json
 src/session.ts    one campaign in one process: run lifecycle (seal, next run), limits and warnings, pacing, timeline, notify, usage
 src/browser.ts    Playwright: persistent context, devices, console capture, clock, touch, screenshots + grid
@@ -200,6 +201,10 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   - The model list is at `https://opencode.ai/inference/go/v1/models` (`/openai/v1/models` returns 404). It gives each model's modalities, efforts and prices.
   - Trust `usage.opencode.list_cost` for prices: `deepseek-v4.1-flash` is $0.30 / $1.20 per million tokens, not models.dev's $0.15 / $0.60. `cost` is 0 because usage is billed to the Go allowance.
   - DeepSeek returns `reasoning_content`; `src/openai.ts` sends it back.
+- **ChatGPT subscription limit (seen 2026-10-31):** Codex fails a turn with "You've hit your usage limit. … try again at 2:53 PM". game-r's log line cuts the message off before the time, but the run's transcript has it in full. Terra on high effort used up the allowance in about 1.2 h of play, and Luna on max effort ran 3 h in the next window. game-r still retries it like any other error while the clock runs.
+- **The clock tool traps turn-based play:** Luna paused it, never resumed it, and advanced it by hand 91 times to make moves happen, although every status line said "paused". Use `clock: off` for turn-based games.
+- **Downloads:** Playwright deletes downloads when the context closes, so `GameBrowser.watch` saves each one to `run-NNN/downloads/` (read-only to the agent) and logs it to `console`. ToME's title screen *Backup → Export game data* is one.
+- Node's `fetch` has a hidden 300 s headers timeout (undici) that `AbortSignal` cannot extend, so a slow non-streamed reply failed after 5 minutes. `postJson` uses `node:http(s)`; `model.request_timeout_seconds` is the only bound.
 - **Config:** YAML merge keys (`<<: *anchor`) are enabled. Before, they were ignored without a warning, and a campaign that reused a model block fell back to the default player, which would have started the real `claude`. Check a new campaign with `node src/cli.ts config <c>` before running it.
 - **ccusage** (`npx ccusage@20.0.45`, not a dependency) prices Claude Code, Codex and OpenCode logs from LiteLLM. Use it to cross-check the ledger's costs.
 - **Tests must never start a real agent CLI**: it spends the user's
@@ -218,31 +223,6 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   - Both CLIs search upwards from the run folder (inside this repo) for instruction files, so game sessions loaded `~/.claude/CLAUDE.md` and this file. game-r sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` (undocumented; check a session log for "Contents of" after a Claude Code upgrade) and Codex's `project_doc_max_bytes=0`. `--safe-mode` also removes the MCP tools; `CLAUDE_CONFIG_DIR` needs a second login.
 - `events.once(child, 'close')` rejects when the child emits `error` (for
   example ENOENT); `src/agent.ts` uses its own `finished()` helper.
-
-**Where work happens now: the user's Mac (from 2026-10-30)**
-- **Git:** the repo is at `~/Local/git-repos/game-r`. Work on the current branch (`main` for now; don't create branches unless asked). Commit only with the user's approval, then push when asked.
-- **Tools on PATH:** Chromium is in the default Playwright cache (`setup.sh` installs it only if missing). `claude`, `codex` (signed in with ChatGPT) and `opencode` are on PATH.
-- **Notifications:** `ping-me "<msg>"` sends the user an iMessage; it is the notify command.
-- **Long runs and headed play:** see README (*Long campaigns on a laptop*, `headless: false`).
-- **Runs are kept:** each new campaign gets its own name rather than archiving or deleting earlier ones.
-
-**Historical: the Claude Code on the web environment (first sessions only)**
-- Playwright's browsers are preinstalled at `/opt/pw-browsers`
-  (`PLAYWRIGHT_BROWSERS_PATH`). Never run `playwright install`; keep
-  `playwright` pinned to 1.63.0 so it finds them.
-- An MCP stdio client passes the server only a minimal environment, which
-  drops `PLAYWRIGHT_BROWSERS_PATH`; `test/mcp.test.ts` passes `process.env`
-  through. On a normal Mac install browsers are in the default cache.
-- Network: github.com (clone) and the npm registry work. Blocked in the first
-  session: `arxiv.org`, `dev.to`, `latent.space`, `*.github.io`, `opencode.ai`,
-  `developers.openai.com` (the user is adding the ones `HANDOFF.md` lists).
-- Running `npm ci` in a cloned third-party game repo was refused by the
-  sandbox's safety check (it runs third-party install scripts). Don't retry
-  or work around it; use the live github.io builds. ToME's build also needs
-  the Emscripten SDK.
-- No `ANTHROPIC_API_KEY` was set in the first session; the Claude subscription works through `claude -p`.
-- A stop hook there asked for everything to be committed and pushed before a
-  turn ended, and work went on `claude/...` branches.
 - Don't `pkill -f <pattern>` from Bash: the pattern also matches the shell
   running the command and kills it (exit 144). Find PIDs with
   `ps -eo pid,args | grep "[n]ode driver"` and `kill` them. Background
@@ -263,7 +243,7 @@ Add `--notify` to let `notify` and `end_run` send real notifications (off by def
 ## The example games
 
 - **ToME — Tales of Middle-earth** (`darrencroton/tales-of-middle-earth`, the
-  user's): ToME 2 compiled to WebAssembly, a phone-first PWA. Turn-based.
+  maintainer's): ToME 2 compiled to WebAssembly, a phone-first PWA. Turn-based.
   Pointer events plus some touch. `window.__tome` is a debug hook
   (`screenText`, `sendText`, `mode`, `actions`, `tapCell`, `exploreStop`…) and
   `?wizard` enables wizard mode; both are developer-level access, not player

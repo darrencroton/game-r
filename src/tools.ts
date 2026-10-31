@@ -383,7 +383,7 @@ export function createTools(session: Session): Tool[] {
   tools.push({
     name: 'console',
     description:
-      'Browser console messages, uncaught page errors, failed or 4xx/5xx network requests and auto-accepted dialogs. ' +
+      'Browser console messages, uncaught page errors, failed or 4xx/5xx network requests, auto-accepted dialogs, and downloads (saved to /run/downloads/). ' +
       'By default returns what is new since the last call; all returns everything kept for this run. problems_only drops logs and info.',
     input: z.strictObject({
       all: z.boolean().optional(),

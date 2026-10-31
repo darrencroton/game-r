@@ -1,5 +1,7 @@
 # game-r.yaml — every user option lives here.
 # `defaults` apply to every campaign; a campaign overrides only what it sets.
+# Keep your own campaigns and settings (say, notify.command) in game-r.local.yaml beside this file (gitignored):
+# game-r merges it over this one, defaults deep-merged and campaigns added, or deep-merged by name.
 # Secrets never go in this file: API keys are read from the environment variable named in model.api_key_env,
 # or from the gitignored secrets file (model.secrets_file, ./.env by default).
 
@@ -9,7 +11,7 @@ defaults:
     #   claude-code        Claude Code (`claude -p`) on your Claude subscription; plays through game-r's tools over MCP
     #   codex              Codex CLI (`codex exec`) on your ChatGPT subscription; the same, with its shell tool off
     #   openai-compatible  game-r's own loop over any Chat Completions API (OpenCode Go, OpenAI, OpenRouter, Ollama…)
-    #   anthropic          game-r's own loop over the Claude API (not built yet; see HANDOFF.md)
+    #   anthropic          game-r's own loop over the Claude API (not built yet)
     provider: claude-code
     name: sonnet                     # model id or CLI alias (claude-code: opus | sonnet | haiku | full id); null = the CLI's default.
                                      # Sonnet on high effort is the benchmark player.
@@ -19,6 +21,7 @@ defaults:
     secrets_file: ./.env             # NAME=value lines, gitignored (copy .env.example); keys stay out of the agent CLIs' environment
     headers: {}                      # openai-compatible: extra request headers; "{conversation}" becomes a per-conversation id
     max_output_tokens: 16000         # openai-compatible / anthropic
+    request_timeout_seconds: 600     # openai-compatible / anthropic: how long one model reply may take (raise for slow local models)
     reasoning: high                  # effort, passed as given (claude-code --effort; codex model_reasoning_effort; reasoning_effort); off = don't send
     vision: true                     # false for text-only models: screenshots are saved but not sent
     # USD per million tokens, for cost tracking and limits.cost_usd with API providers. null = not tracked.
@@ -56,9 +59,9 @@ defaults:
                                      # Above ~300 s every call misses the prompt cache. Real-time games run on while it waits.
   notify:
     # Run with $GAMER_TITLE $GAMER_MESSAGE $GAMER_LEVEL $GAMER_EVENT $GAMER_CAMPAIGN set; refer to them, never paste game text in.
-    # ping-me is the owner's iMessage script; a failure is logged in the transcript (notify_failed). macOS alternative:
-    # command: osascript -e 'display notification (system attribute "GAMER_MESSAGE") with title (system attribute "GAMER_TITLE")'
-    command: 'ping-me "$GAMER_TITLE: $GAMER_MESSAGE"'
+    # null = notifications are only logged (in the transcript and log.md); a failed command is logged as notify_failed.
+    # macOS example: command: osascript -e 'display notification (system attribute "GAMER_MESSAGE") with title (system attribute "GAMER_TITLE")'
+    command: null
     on: [agent, run_end, campaign_end, limit, error]
   system_prompt_file: null           # replace the built-in framework prompt (keep {{clock}} and {{developer}} placeholders)
   output: ./runs
@@ -106,14 +109,6 @@ campaigns:
 
       Deliverables: log depth, character level and hit points at each new dungeon level.
       Notify me when you reach each new dungeon level, and if the hero dies.
-
-  # The long run (release check R1): 3 hours on the benchmark player. Run it with caffeinate (see HANDOFF.md).
-  tome-barrow-long:
-    url: https://darrencroton.github.io/tales-of-middle-earth/
-    browser: { device: "Pixel 7", headless: false }
-    limits: { runs: null, hours: 3 }
-    notify: { on: [agent, campaign_end, limit, error] }   # no message per run end: in a roguelike that is every death
-    instructions: *barrow
 
   # The same campaign on the other two players, for comparison with tome-barrow (Claude Code, Sonnet high).
   tome-barrow-codex:

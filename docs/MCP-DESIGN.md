@@ -3,7 +3,7 @@
 An engine where an LLM plays and tests HTML web-app games from a URL, under the
 user's instructions, for hours to days, and learns from run to run.
 
-> Status: steps 1–2b built and run for real on the test game and ToME. Draft 0.6 adds §7, memory, reporting and the run protocol, from what the first ToME run taught (step 3b in §10). See `HANDOFF.md`.
+> Status: steps 1–2b built and run for real on the test game and ToME. Draft 0.6 adds §7, memory, reporting and the run protocol, from what the first ToME run taught (step 3b in §10).
 
 ---
 
@@ -92,6 +92,8 @@ game-r.yaml ──► game-r run <campaign>
 All user options and directions live in **`game-r.yaml`**. `defaults` apply to
 every campaign; each campaign overrides only what differs. API keys are never written into it: the config names a key (`model.api_key_env`), and game-r reads it from the environment or the gitignored `.env` file (`model.secrets_file`).
 
+Personal settings and campaigns go in a gitignored **`game-r.local.yaml`** beside it, which game-r merges over the shipped file (defaults deep-merged; campaigns added, or deep-merged by name). The shipped file keeps only generic examples.
+
 The commented file in the repository, [`game-r.yaml`](../game-r.yaml), is the
 reference: every option with its default, and three example campaigns (ToME
 UI testing, Battle Drones speed-runs, and a tiny local test game). A campaign
@@ -149,7 +151,7 @@ It shows local time with its zone, the run, wall time and tool calls used agains
 | `look` | `grid?` (overlay labelled cells for canvas aiming), `region?` (zoom), `save_as?` | Screenshot plus URL, title and viewport, and a `scrollable:` line when the page or an area on screen has more content beyond its edges (phones show no scrollbars, so a screenshot alone can't tell; scrolling drawn inside a canvas can't be detected). `save_as` writes it into the run directory for reports. |
 | `read_page` | `boxes?`, `find?`, `depth?`, `url?` | Accessibility snapshot with element refs (`button "Explore" [ref=e12]`). With `url`, reads a documentation page in a short-lived headless browser of its own (about 2 s), so it doesn't share the game's clock, storage or console. It returns the page's plain text (capped; `find` filters it), then closes. A probe found plain text more faithful than a snapshot here: GitHub's file view hides the file's lines from the accessibility tree. |
 | `act` | `actions: Action[]`, `look_after?` | Runs a batch of inputs in order; stops at the first failure; returns `ok`/reason per action. |
-| `console` | `all?`, `problems_only?` | Console messages, page errors and failed network requests. |
+| `console` | `all?`, `problems_only?` | Console messages, page errors, failed network requests, auto-accepted dialogs, and downloads (each saved to `run-NNN/downloads/`). |
 | `clock` | `pause` / `resume` / `advance {ms}` / `status` | Controls the page's game time (`requestAnimationFrame`, timers, `performance.now()`). Present only if `clock: allowed`. |
 | `browser` | `device?`, `viewport?`, `orientation?`, `restart?` | Change device or orientation mid-run; restart the browser (profile kept). |
 | `evaluate` | `expression` | Run JS in the page. Present only if `access: developer`. |
@@ -248,7 +250,7 @@ loop until the campaign is done, a limit is hit, or a stop is requested:
 
 ## 7. Memory, reporting and the run protocol
 
-The first ToME run (`HANDOFF.md`) showed what an unstructured /memory costs. The agent never read the game's help and went down without armour. It invented clock times, believed 15 minutes had passed after 3.4, and ended the campaign with its goal unmet. Its notes were one file of screen coordinates written two minutes in. The fix is structure, not supervision: **the agent's memory and its reporting are the same few files.** Templates lay them out, a short protocol in the framework prompt keeps them current, and facts that only the framework writes anchor them.
+The first ToME run showed what an unstructured /memory costs. The agent never read the game's help and went down without armour. It invented clock times, believed 15 minutes had passed after 3.4, and ended the campaign with its goal unmet. Its notes were one file of screen coordinates written two minutes in. The fix is structure, not supervision: **the agent's memory and its reporting are the same few files.** Templates lay them out, a short protocol in the framework prompt keeps them current, and facts that only the framework writes anchor them.
 
 ### What lives where
 
@@ -265,7 +267,7 @@ runs/<campaign>/
     report.md          agent: Objective (at the start), Outcome (at the end)
     log.md             the run's timeline: `log` entries plus framework events, all stamped
     memory/            framework: a copy of /memory as the run ended
-    transcript.jsonl · shots/ · live.jpg · video/ · trace.zip
+    transcript.jsonl · shots/ · live.jpg · downloads/ · video/ · trace.zip
                        shots/: when the agent ends the run, only the screenshots a run file or /memory names are kept (browser.keep_shots)
   config.yaml · campaign.lock · status.json · stop.request · profile/
 ```
@@ -316,7 +318,7 @@ Limits stay hard: `hours: 0.25` means 15 minutes. **The warning is the buffer**,
 
 ### Considered, not adopted
 
-From the user's ai-agent-coder toolkit we keep:
+From the ai-agent-coder toolkit we keep:
 
 - a fixed brief with an enumerable checklist;
 - "Now" as the handoff, with one concrete next action;
@@ -369,7 +371,7 @@ Separate campaigns run in parallel, each with its own browser, directory and loc
 | 1 | Config loader, browser tools, `files`, `status`, `notify`, `end_run`, workspace, `game-r mcp` | Tests against a fixture game; an agent plays through the tools | **Built.** Played the fixture turn by turn on paused time |
 | 2 | Engine loop (`game-r run`, `stop`), context refresh, usage and cost, limits, OpenAI-compatible provider | Loop tests against a mock model server | **Built** |
 | 2b | Agent CLI players (Claude Code, Codex) over HTTP MCP; OpenCode Go support (headers, `vision`) | Fake-CLI tests; a real Claude Code smoke run | **Built** (34 tests). Claude Code verified for real; Codex and OpenCode Go await access |
-| 3 | Both example games, live | Hand-played tool checks, then short campaigns per provider | Next (see `HANDOFF.md`) |
+| 3 | Both example games, live | Hand-played tool checks, then short campaigns per provider | Next |
 | 3b | §7: status line, `log`, templates and protocol, `run.json` and ledger, run boundaries, `read_page {url}`, `end_run` outcomes, wrap-up warnings, `calls_per_run`, pacing | Unit tests; then 30-minute ToME runs on all three players | **Built** and run |
 | 4 | Multi-run campaigns in practice; tune the framework prompt | Run 5 plays measurably better than run 1, from its own memory | |
 | — | Anthropic API provider | — | Deferred: subscriptions cover Claude |
@@ -388,11 +390,11 @@ needs help. Each should earn its place by measured improvement.
 - *Archivist*: curates /memory (prunes, merges, checks entries against recent evidence).
 - *Reflector*: a dedicated post-mortem at run end that proposes lessons and the next run's focus.
 - *Verifier*: re-runs a reported bug to confirm it before it is reported.
-- *Advisor* (the user's idea, 2026-10-31; to ponder, not yet planned): a second model watches the player and, every X calls (5, 10, 50…), may offer an opinion or a suggestion. The player stays in charge and is free to ignore it. See *The advisor idea* below.
+- *Advisor* (an idea from 2026-10-31; to ponder, not yet planned): a second model watches the player and, every X calls (5, 10, 50…), may offer an opinion or a suggestion. The player stays in charge and is free to ignore it. See *The advisor idea* below.
 
 **The advisor idea**
 
-*Why:* a spectator sees what the immersed player misses ("the hint says do that, why don't you?"), much as a code review or a manuscript reader does. In `tome-barrow-long` (2026-10-30), six heroes died looking for the Barrow-downs before the seventh found the way in. Help had already said to walk off the edge of an area, and *Recall depths* lists the Barrow-Downs; a watcher with fresh eyes might have pointed either out sooner.
+*Why:* a spectator sees what the immersed player misses ("the hint says do that, why don't you?"), much as a code review or a manuscript reader does. In a 3-hour ToME campaign (2026-10-30), six heroes died looking for the Barrow-downs before the seventh found the way in. Help had already said to walk off the edge of an area, and *Recall depths* lists the Barrow-Downs; a watcher with fresh eyes might have pointed either out sooner.
 
 *How it differs from what §1 and §7 rule out:* it advises and never enforces. It doesn't assess steps, block actions or stop the run. It is closest to the *Auditor* above, but it advises on play, not on progress against the instructions.
 

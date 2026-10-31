@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium, devices, firefox, webkit, type BrowserContext, type BrowserContextOptions, type CDPSession, type Page } from 'playwright';
@@ -124,6 +125,18 @@ export class GameBrowser {
       await dialog.accept(dialog.defaultValue()).catch(() => {});
     });
     page.on('popup', (popup) => this.push('info', `The page opened a new tab: ${popup.url()}`));
+    page.on('download', async (download) => {
+      const suggested = path.basename(download.suggestedFilename());
+      const name = suggested && suggested !== '.' && suggested !== '..' ? suggested : 'download';
+      try {
+        const dir = path.join(this.dirs().run, 'downloads');
+        const saved = freeName(dir, name);
+        await download.saveAs(path.join(dir, saved));
+        this.push('download', `Saved the download "${name}" as /run/downloads/${saved}`);
+      } catch (err) {
+        this.push('download', `The download "${name}" failed: ${(err as Error).message}`);
+      }
+    });
   }
 
   private push(level: string, text: string): void {
@@ -240,6 +253,16 @@ export class GameBrowser {
     if (!context) return;
     if (this.cfg.trace) await context.tracing.stop({ path: path.join(this.dirs().run, 'trace.zip') }).catch(() => {});
     await context.close().catch(() => {});
+  }
+}
+
+/** name, or name-2.ext, name-3.ext…: the first that dir doesn't have yet. */
+function freeName(dir: string, name: string): string {
+  const ext = path.extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? name : `${stem}-${n}${ext}`;
+    if (!existsSync(path.join(dir, candidate))) return candidate;
   }
 }
 

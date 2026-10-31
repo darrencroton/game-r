@@ -68,14 +68,14 @@ notify=$(node --input-type=module -e "
   for (const name of await listCampaigns('game-r.yaml')) await loadConfig('game-r.yaml', name);
   const [first] = await listCampaigns('game-r.yaml');
   console.log(first ? (await loadConfig('game-r.yaml', first)).notify.command ?? '' : '');
-") || fail "game-r.yaml is invalid (see the error above)."
-ok "game-r.yaml is valid"
+") || fail "game-r.yaml (or game-r.local.yaml) is invalid (see the error above)."
+ok "game-r.yaml is valid$( [ -f game-r.local.yaml ] && echo ', with game-r.local.yaml merged over it')"
 if [ -z "$notify" ]; then
-  warn "notify.command is not set in game-r.yaml: notifications are only logged"
+  warn "notify.command is not set: notifications are only logged (set yours in game-r.local.yaml)"
 elif command -v "${notify%% *}" >/dev/null; then
   ok "notify.command: $notify"
 else
-  warn "notify.command uses '${notify%% *}', which is not on PATH: change notify.command in game-r.yaml"
+  warn "notify.command uses '${notify%% *}', which is not on PATH: change notify.command (in game-r.local.yaml)"
 fi
 
 if [ "${1:-}" != "--skip-tests" ]; then

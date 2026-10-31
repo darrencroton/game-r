@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseEnv } from 'node:util';
 import type { Config } from './config.ts';
@@ -53,7 +55,7 @@ export async function createProvider(model: Config['model']): Promise<Provider> 
     const { OpenAICompatible } = await import('./openai.ts');
     return new OpenAICompatible(model);
   }
-  throw new FatalModelError('The anthropic provider is not built yet (it needs @anthropic-ai/sdk; see HANDOFF.md). Use provider: openai-compatible meanwhile.');
+  throw new FatalModelError('The anthropic provider is not built yet (it needs @anthropic-ai/sdk). Use provider: openai-compatible meanwhile.');
 }
 
 /** Reads one NAME=value entry from a secrets file; a missing file reads as empty. */
@@ -103,23 +105,38 @@ export class HttpError extends Error {
   }
 }
 
-/** POSTs JSON and returns the parsed response; HTTP failures become HttpError. */
+/** POSTs JSON over node:http(s) and returns the parsed response; only timeoutMs bounds the wait. HTTP failures become HttpError. */
 export async function postJson(url: string, body: unknown, headers: Record<string, string>, timeoutMs = 600_000): Promise<any> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
+  const data = JSON.stringify(body);
+  const target = new URL(url);
+  const { status, text, retryAfter, location } = await new Promise<{ status: number; text: string; retryAfter: string | undefined; location: string | undefined }>((resolve, reject) => {
+    const fail = (err: Error) => reject(err.name === 'AbortError' ? new Error(`No reply within ${timeoutMs / 1000} s (model.request_timeout_seconds)`) : err);
+    const req = (target.protocol === 'https:' ? https : http).request(
+      target,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data), ...headers },
+        signal: AbortSignal.timeout(timeoutMs),
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8'), retryAfter: res.headers['retry-after'], location: res.headers.location }));
+        res.on('error', fail);
+      },
+    );
+    req.on('error', fail);
+    req.end(data);
   });
-  const text = await res.text();
-  if (!res.ok) {
-    const after = Number(res.headers.get('retry-after'));
-    throw new HttpError(res.status, `HTTP ${res.status}: ${text.slice(0, 500)}`, Number.isFinite(after) && after > 0 ? after * 1000 : null);
+  if (status < 200 || status >= 300) {
+    const after = Number(retryAfter);
+    const redirect = location ? ` → ${location} (redirects aren't followed: check model.base_url)` : '';
+    throw new HttpError(status, `HTTP ${status}${redirect}: ${text.slice(0, 500)}`, Number.isFinite(after) && after > 0 ? after * 1000 : null);
   }
   try {
     return JSON.parse(text);
   } catch {
-    throw new HttpError(res.status, `Response was not JSON: ${text.slice(0, 200)}`, null);
+    throw new HttpError(status, `Response was not JSON: ${text.slice(0, 200)}`, null);
   }
 }
 

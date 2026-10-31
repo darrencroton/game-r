@@ -7,7 +7,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { runCampaign } from '../src/engine.ts';
 import { deepMerge } from '../src/config.ts';
-import { cost, FatalModelError, HttpError, withRetries } from '../src/model.ts';
+import { cost, FatalModelError, HttpError, postJson, withRetries } from '../src/model.ts';
 import { makeConfig } from './helpers.ts';
 
 type Reply = { text?: string; calls?: [string, unknown][]; prompt?: number; status?: number };
@@ -205,5 +205,33 @@ describe('withRetries', () => {
       FatalModelError,
     );
     assert.equal(calls, 1);
+  });
+});
+
+describe('postJson', () => {
+  test('returns JSON, reports Retry-After and redirects, and times out on headers or body', async () => {
+    const server = http.createServer(async (req, res) => {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const { reply } = JSON.parse(body);
+      if (reply === 'slow') setTimeout(() => res.end('{}'), 500);
+      else if (reply === 'stall') res.writeHead(200, { 'content-type': 'application/json' }).write('{"a":');
+      else if (reply === 'limited') res.writeHead(429, { 'retry-after': '3' }).end('busy');
+      else if (reply === 'moved') res.writeHead(307, { location: 'https://example.com/v1/' }).end();
+      else res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ echo: reply }));
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/chat/completions`;
+    try {
+      assert.deepEqual(await postJson(url, { reply: 'héllo' }, {}), { echo: 'héllo' });
+      await assert.rejects(postJson(url, { reply: 'limited' }, {}), (err: HttpError) => err.status === 429 && err.retryAfterMs === 3000);
+      await assert.rejects(postJson(url, { reply: 'moved' }, {}), (err: HttpError) => err.status === 307 && /→ https:\/\/example\.com\/v1\/.*model\.base_url/.test(err.message));
+      await assert.rejects(postJson(url, { reply: 'slow' }, {}, 50), /No reply within 0\.05 s \(model\.request_timeout_seconds\)/);
+      await assert.rejects(postJson(url, { reply: 'stall' }, {}, 200), /No reply within 0\.2 s/);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
   });
 });

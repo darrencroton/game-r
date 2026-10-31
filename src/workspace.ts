@@ -4,7 +4,7 @@ import path from 'node:path';
 import { stringify } from 'yaml';
 import type { Config } from './config.ts';
 
-export const ENGINE_FILES = new Set(['transcript.jsonl', 'shots', 'live.jpg', 'run.json', 'log.md', 'memory', 'video', 'trace.zip']);
+export const ENGINE_FILES = new Set(['transcript.jsonl', 'shots', 'live.jpg', 'run.json', 'log.md', 'memory', 'video', 'trace.zip', 'downloads']);
 
 const TEMPLATES = new URL('../templates/', import.meta.url).pathname;
 
@@ -40,6 +40,7 @@ export class Workspace {
   readonly profileDir: string;
   private readonly lockFile: string;
   private locked = false;
+  private writes = 0;
   readonly config: Config;
   run = 0;
 
@@ -136,7 +137,7 @@ export class Workspace {
     const named = new Set<string>();
     for (const dir of [this.runDir, this.memoryDir]) {
       for (const name of await readdir(dir, { recursive: true })) {
-        if (name === 'transcript.jsonl' || /\.(jpe?g|png|gif|webp|webm|mp4|zip)$/i.test(name)) continue;
+        if (name === 'transcript.jsonl' || name.split(path.sep)[0] === 'downloads' || /\.(jpe?g|png|gif|webp|webm|mp4|zip)$/i.test(name)) continue;
         const text = await readFile(path.join(dir, name), 'utf8').catch(() => '');
         for (const m of text.matchAll(/shots\/(\d+\.jpg)/g)) named.add(m[1]!);
       }
@@ -161,9 +162,7 @@ export class Workspace {
 
   /** Writes run.json (atomically) and, unless told not to, regenerates ledger.md. */
   async saveRun(facts: RunFacts, ledger = true): Promise<void> {
-    const file = path.join(this.dir, runName(facts.run), 'run.json');
-    await writeFile(`${file}.tmp`, JSON.stringify(facts, null, 2));
-    await rename(`${file}.tmp`, file);
+    await this.writeAtomic(path.join(this.dir, runName(facts.run), 'run.json'), JSON.stringify(facts, null, 2));
     if (ledger) await writeFile(path.join(this.dir, 'ledger.md'), await this.ledger());
   }
 
@@ -201,7 +200,19 @@ export class Workspace {
   }
 
   async writeStatus(status: Record<string, unknown>): Promise<void> {
-    await writeFile(path.join(this.dir, 'status.json'), JSON.stringify({ ...status, updated_at: new Date().toISOString() }, null, 2));
+    await this.writeAtomic(path.join(this.dir, 'status.json'), JSON.stringify({ ...status, updated_at: new Date().toISOString() }, null, 2));
+  }
+
+  /** Writes a unique temp file, then renames it into place, so readers never see a partial file. */
+  private async writeAtomic(file: string, text: string): Promise<void> {
+    const tmp = `${file}.${process.pid}.${++this.writes}.tmp`;
+    try {
+      await writeFile(tmp, text);
+      await rename(tmp, file);
+    } catch (err) {
+      await rm(tmp, { force: true });
+      throw err;
+    }
   }
 
   async close(): Promise<void> {

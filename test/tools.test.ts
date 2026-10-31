@@ -98,6 +98,31 @@ describe('tools against the fixture game', () => {
     assert.equal(textOf(await call('console', {})), 'Nothing new in the console.');
   });
 
+  test('downloads are saved in the run folder and listed by console', async () => {
+    await call('console', {});
+    await call('evaluate', {
+      expression: `(() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['saved game'])); a.download = 'game.tome2save'; a.click(); return true; })()`,
+    });
+    let log = '';
+    for (let i = 0; i < 50 && !log.includes('Saved the download'); i++) {
+      await sleep(100);
+      log += textOf(await call('console', {}));
+    }
+    assert.match(log, /download\s+Saved the download "game\.tome2save" as \/run\/downloads\/game\.tome2save/);
+    assert.equal(await readFile(path.join(session.workspace.runDir, 'downloads', 'game.tome2save'), 'utf8'), 'saved game');
+    await call('evaluate', {
+      expression: `(() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['again'])); a.download = 'game.tome2save'; a.click(); return true; })()`,
+    });
+    log = '';
+    for (let i = 0; i < 50 && !log.includes('Saved the download'); i++) {
+      await sleep(100);
+      log += textOf(await call('console', {}));
+    }
+    assert.match(log, /as \/run\/downloads\/game-2\.tome2save/, 'a second download of the same name keeps the first');
+    assert.equal(await readFile(path.join(session.workspace.runDir, 'downloads', 'game-2.tome2save'), 'utf8'), 'again');
+    assert.match(textOf(await call('files', { command: 'create', path: '/run/downloads/x.txt', file_text: 'x' })), /written by the engine and is read-only/);
+  });
+
   test('failures stop the batch with a reason', async () => {
     const result = await call('act', { actions: [{ do: 'click', at: 'e9999' }, { do: 'wait', ms: 10 }] });
     assert.match(textOf(result), /1\. click e9999: FAILED — .*\n\(1 remaining action\(s\) not run\)/);

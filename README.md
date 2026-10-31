@@ -24,7 +24,7 @@ it learned in the last.
 - **MCP.** The same tools are an MCP server, so Claude Code or any MCP client
   can play a game directly.
 
-> **Status:** early. The tools, the MCP server and the engine are tested, and 30-minute campaigns on a real game (ToME) have run on all three players: Claude Code, Codex and OpenCode Go. Runs of several hours and a second game are next (see [`HANDOFF.md`](HANDOFF.md)).
+> **Status:** early. The tools, the MCP server and the engine are tested, and 30-minute campaigns on a real game (ToME) have run on all three players: Claude Code, Codex and OpenCode Go. Three-hour campaigns have run on Claude Code, Codex and local models through the OpenAI-compatible loop; a second game is next.
 
 ## Quick start
 
@@ -47,7 +47,7 @@ The setup script is safe to run again at any time. It checks Node, installs the 
 
 The default player is Claude Code with Sonnet on high effort, with limits of 10 runs and 48 hours. The shipped campaigns are `tome-ui`, `tome-barrow` (also `-codex` and `-go`), `drones-score`, and `dodge` (also `-codex` and `-go`) on the bundled test game. `node src/cli.ts list` lists them, and `node src/cli.ts config <campaign>` shows one fully resolved. `run` spends real subscription or API budget; `limits` (`hours`, `runs`, `cost_usd`) bound it.
 
-Edit [`game-r.yaml`](game-r.yaml), then:
+Edit [`game-r.yaml`](game-r.yaml), or keep your own campaigns in `game-r.local.yaml` (see *Configure a campaign*), then:
 
 ```zsh
 node src/cli.ts run dodge              # a five-minute smoke test on the bundled test game (Haiku)
@@ -68,6 +68,8 @@ subscription's usage limit), game-r waits and retries.
 Every option lives in `game-r.yaml`: `defaults` apply to every campaign, and a
 campaign overrides only what it sets. A campaign needs a `url` and
 `instructions`.
+
+**Your own settings and campaigns** go in `game-r.local.yaml` beside it (gitignored). game-r merges it over `game-r.yaml`: its `defaults` deep-merge over the shipped ones, and its campaigns are added, or deep-merged into a shipped campaign of the same name. YAML anchors don't cross files, so repeat any shared block (an `instructions: &name |` text, a `model: &name` block) in the local file; top-level keys starting `x-` can hold such blocks, and any other unknown top-level key is an error. `node src/cli.ts config <campaign>` shows the result.
 
 Instructions work best in three parts. **Goal** is what to achieve, as checkable criteria. **Getting started** is a known plan or direction for the opening, such as what to read first or what usually works; the agent follows it before anything else. **Deliverables** is what to report beyond the framework's own memory and run reports. To start a campaign with knowledge, put files in `runs/<campaign>/memory/` before its first run.
 
@@ -123,7 +125,7 @@ turns per run) and a notification command.
 
 **Notifications.** `notify.command` runs a shell command with the message in
 environment variables (`GAMER_TITLE`, `GAMER_MESSAGE`, `GAMER_LEVEL`,
-`GAMER_EVENT`, `GAMER_CAMPAIGN`). Refer to them inside the command; never paste game text into it. The checked-in config uses the owner's `ping-me` iMessage script; change it to your own, e.g. a macOS notification:
+`GAMER_EVENT`, `GAMER_CAMPAIGN`). Refer to them inside the command; never paste game text into it. The shipped config has none (notifications are only logged); set yours in `game-r.local.yaml`, e.g. a macOS notification:
 
 ```yaml
 notify:
@@ -139,7 +141,7 @@ notify:
 | `look` | Screenshot (image pixels = CSS pixels), optional labelled grid for aiming, zoom, save a copy; notes what can scroll |
 | `read_page` | The page's accessibility tree with element refs to click; or a help/documentation page by URL, read in a separate browser |
 | `act` | A batch of inputs: click, tap, drag, swipe, pinch, long press, keys (held for a time), type, scroll, wait, navigate |
-| `console` | Console messages, page errors, failed requests, dialogs |
+| `console` | Console messages, page errors, failed requests, dialogs, downloads (saved to `run-NNN/downloads/`) |
 | `clock` | Pause, advance and resume game time |
 | `browser` | Switch device or orientation, resize, restart |
 | `files` | Its workspace: `/memory` (kept across runs), `/run` (this run), `/runs` (earlier runs, read-only); `view` can find lines |
@@ -167,7 +169,7 @@ runs/<campaign>/
   ledger.md          one row per run: start, time, calls, cost, how it ended, summary
   memory/            the agent's memory and your view of the campaign: README.md (goal, now, plan), guide.md (big picture), lessons.md (detail)
   run-001/           report.md (objective, outcome), log.md (stamped timeline), run.json (facts), memory/ (copy at the run's end),
-                     transcript.jsonl, shots/ (by default, only those a file names once the agent ends the run), live.jpg, video/ and trace.zip when enabled, and whatever the agent wrote
+                     transcript.jsonl, shots/ (by default, only those a file names once the agent ends the run), live.jpg, downloads/ (files the game downloads), video/ and trace.zip when enabled, and whatever the agent wrote
   status.json        state, run, calls, tokens, cost, elapsed time, last error
   campaign.lock      one process per campaign at a time; stop.request asks a running campaign to stop
   profile/           the browser profile (in-game saves persist across runs)

@@ -40,6 +40,7 @@ class OpenAIConversation implements Conversation {
   private readonly headers: Record<string, string>;
   private readonly onRetry: RetryListener;
   private readonly vision: boolean;
+  private readonly timeoutMs: number;
   contextTokens = 0;
 
   constructor(model: Config['model'], url: string, headers: Record<string, string>, system: string, tools: ToolSpec[], onRetry: RetryListener) {
@@ -48,6 +49,7 @@ class OpenAIConversation implements Conversation {
     this.headers = { ...Object.fromEntries(Object.entries(model.headers).map(([k, v]) => [k, v.replaceAll('{conversation}', conversation)])), ...headers };
     this.onRetry = onRetry;
     this.vision = model.vision;
+    this.timeoutMs = model.request_timeout_seconds * 1000;
     this.messages = [{ role: 'system', content: system }];
     const effort = model.reasoning === 'off' ? null : model.reasoning;
     const officialOpenAI = new URL(url).hostname === 'api.openai.com';
@@ -81,7 +83,7 @@ class OpenAIConversation implements Conversation {
   }
 
   async next(): Promise<Reply> {
-    const res = await withRetries(() => postJson(this.url, { ...this.body, messages: this.messages }, this.headers), this.onRetry);
+    const res = await withRetries(() => postJson(this.url, { ...this.body, messages: this.messages }, this.headers, this.timeoutMs), this.onRetry);
     const message = res.choices?.[0]?.message;
     if (!message) throw new FatalModelError(`Unexpected response: ${JSON.stringify(res).slice(0, 300)}`);
     const toolCalls: any[] = message.tool_calls ?? [];

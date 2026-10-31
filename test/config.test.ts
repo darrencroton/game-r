@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
-import { ConfigError, deepMerge, parseConfigText, resolveCampaign } from '../src/config.ts';
+import { ConfigError, deepMerge, listCampaigns, loadConfig, localConfigPath, parseConfigText, resolveCampaign } from '../src/config.ts';
 import { apiKey, FatalModelError } from '../src/model.ts';
 import { makeConfig, tempDir } from './helpers.ts';
 
@@ -77,8 +77,32 @@ test('API keys come from the environment first, then the secrets file', async ()
 });
 
 test('YAML merge keys work, so a campaign can reuse a model block', () => {
-  const file = parseConfigText('x: &m { provider: codex, name: a }\ncampaigns:\n  c:\n    url: https://example.com/\n    instructions: Play.\n    model: { <<: *m, name: b }\n', 'merge.yaml');
+  const file = parseConfigText('x-models: &m { provider: codex, name: a }\ncampaigns:\n  c:\n    url: https://example.com/\n    instructions: Play.\n    model: { <<: *m, name: b }\n', 'merge.yaml');
   const c = resolveCampaign(file, 'c', '/base');
   assert.equal(c.model.provider, 'codex');
   assert.equal(c.model.name, 'b');
+});
+
+test('a local overlay next to the config adds campaigns and overrides defaults and campaigns', async () => {
+  const dir = await tempDir();
+  const file = path.join(dir, 'game-r.yaml');
+  assert.equal(localConfigPath(file), path.join(dir, 'game-r.local.yaml'));
+  await writeFile(file, YAML);
+  assert.deepEqual(await listCampaigns(file), ['a', 'b', 'bad']);
+  assert.equal((await loadConfig(file, 'a')).notify.command, null);
+  await writeFile(
+    path.join(dir, 'game-r.local.yaml'),
+    `defaults:\n  notify: { command: 'echo hi' }\ncampaigns:\n  a: { limits: { hours: 1 } }\n  mine: { url: https://example.com/, instructions: Mine. }\n`,
+  );
+  assert.deepEqual(await listCampaigns(file), ['a', 'b', 'bad', 'mine']);
+  const a = await loadConfig(file, 'a');
+  assert.equal(a.notify.command, 'echo hi');
+  assert.equal(a.limits.hours, 1);
+  assert.equal(a.limits.runs, 3, 'the shipped defaults still apply');
+  assert.equal(a.browser.headless, false, 'the shipped campaign keeps what the overlay does not set');
+  assert.equal((await loadConfig(file, 'mine')).model.name, 'claude-opus-5-5');
+  await writeFile(path.join(dir, 'game-r.local.yaml'), 'x-shared: { a: 1 }\ndefault: { limits: { runs: 1 } }\n');
+  await assert.rejects(loadConfig(file, 'a'), /game-r\.local\.yaml: unknown top-level key default/);
+  await writeFile(path.join(dir, 'game-r.local.yaml'), 'campaigns: [oops');
+  await assert.rejects(loadConfig(file, 'a'), (err: Error) => err instanceof ConfigError && err.message.includes('game-r.local.yaml'));
 });

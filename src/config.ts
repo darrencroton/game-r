@@ -14,6 +14,7 @@ const ModelSchema = z.object({
   secrets_file: z.string().nullable().default('./.env'),
   headers: z.record(z.string(), z.string()).default({}),
   max_output_tokens: z.number().int().positive().default(16000),
+  request_timeout_seconds: z.number().positive().default(600),
   reasoning: z.string().default('high'),
   vision: z.boolean().default(true),
   price_per_mtok: z
@@ -85,6 +86,8 @@ const FileSchema = z.object({
   campaigns: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
 });
 
+type ConfigFile = z.infer<typeof FileSchema>;
+
 type Plain = Record<string, unknown>;
 
 function isPlain(value: unknown): value is Plain {
@@ -105,19 +108,21 @@ function formatIssues(error: z.ZodError): string {
   return error.issues.map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`).join('\n');
 }
 
-export function parseConfigText(text: string, source: string): z.infer<typeof FileSchema> {
+export function parseConfigText(text: string, source: string): ConfigFile {
   let raw: unknown;
   try {
     raw = parse(text, { merge: true }) ?? {};
   } catch (err) {
     throw new ConfigError(`${source}: invalid YAML: ${(err as Error).message}`);
   }
+  const unknown = isPlain(raw) ? Object.keys(raw).filter((k) => k !== 'defaults' && k !== 'campaigns' && !k.startsWith('x-')) : [];
+  if (unknown.length) throw new ConfigError(`${source}: unknown top-level key ${unknown.join(', ')} (use defaults, campaigns, or an x- name to hold YAML anchors)`);
   const file = FileSchema.safeParse(raw);
   if (!file.success) throw new ConfigError(`${source}:\n${formatIssues(file.error)}`);
   return file.data;
 }
 
-export function resolveCampaign(file: z.infer<typeof FileSchema>, name: string, baseDir: string): Config {
+export function resolveCampaign(file: ConfigFile, name: string, baseDir: string): Config {
   const campaign = file.campaigns[name];
   if (!campaign) {
     const known = Object.keys(file.campaigns);
@@ -134,17 +139,41 @@ export function resolveCampaign(file: z.infer<typeof FileSchema>, name: string, 
   return config;
 }
 
-export async function loadConfig(file: string, name: string): Promise<Config> {
-  let text: string;
+/** The personal overlay for a config file, in the same folder: game-r.yaml → game-r.local.yaml. */
+export function localConfigPath(file: string): string {
+  const ext = path.extname(file);
+  return path.join(path.dirname(file), `${path.basename(file, ext)}.local${ext}`);
+}
+
+/** Merges an overlay over a config: defaults deep-merged, campaigns added, or deep-merged by name. */
+export function mergeConfigFiles(base: ConfigFile, over: ConfigFile): ConfigFile {
+  return {
+    defaults: deepMerge(base.defaults, over.defaults),
+    campaigns: deepMerge(base.campaigns, over.campaigns) as ConfigFile['campaigns'],
+  };
+}
+
+async function readText(file: string, missingOk: boolean): Promise<string | null> {
   try {
-    text = await readFile(file, 'utf8');
+    return await readFile(file, 'utf8');
   } catch (err) {
+    if (missingOk && (err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new ConfigError(`Cannot read ${file}: ${(err as Error).message}`);
   }
-  return resolveCampaign(parseConfigText(text, file), name, path.dirname(path.resolve(file)));
+}
+
+/** Reads a config file and, when it exists, its local overlay (see localConfigPath). */
+export async function readConfigFile(file: string): Promise<ConfigFile> {
+  const base = parseConfigText((await readText(file, false))!, file);
+  const localFile = localConfigPath(file);
+  const local = await readText(localFile, true);
+  return local === null ? base : mergeConfigFiles(base, parseConfigText(local, localFile));
+}
+
+export async function loadConfig(file: string, name: string): Promise<Config> {
+  return resolveCampaign(await readConfigFile(file), name, path.dirname(path.resolve(file)));
 }
 
 export async function listCampaigns(file: string): Promise<string[]> {
-  const text = await readFile(file, 'utf8');
-  return Object.keys(parseConfigText(text, file).campaigns);
+  return Object.keys((await readConfigFile(file)).campaigns);
 }
