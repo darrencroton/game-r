@@ -123,7 +123,7 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
   - Players end runs with the hero alive, or spend time trying to revive a dead one. Say in the instructions what each costs and whether it's allowed: starting afresh with a new hero can be fair play where undoing events is not.
   - A player stuck on a level gate read the game's public source through `read_page` to explain it. That is allowed unless the instructions keep it to in-game knowledge.
   - A slower model wandered the world map for hours looking for an entrance. Bounding the search in the instructions ("on the starting map, before its edge") narrows it without giving the answer (in trial from 2026-11-01).
-- **Game saves live in the browser profile** (`runs/<c>/profile/` with `browser.profile: campaign`), so they persist across runs. To continue a hero in a new campaign, copy that folder into the new campaign's directory before its first run (not yet tried). An exported save (in `run-NNN/downloads/`) can't be imported by the agent: game-r has no file-upload action.
+- **Game saves live in the browser profile** (`runs/<c>/profile/` with `browser.profile: campaign`), so they persist across runs. Keep a save point worth replaying in `saves/<name>/` (gitignored): move the campaign folder there, read-only, with a `SAVE.md` describing the hero. To continue the hero in a new campaign, copy its `profile/` into the new campaign's directory before its first run, with the same URL and device (not yet tried). An exported save (in `run-NNN/downloads/`) can't be imported by the agent: game-r has no file-upload action.
 
 **Playwright and the browser**
 - `context.clock.install()` must run when the context is created, before page
