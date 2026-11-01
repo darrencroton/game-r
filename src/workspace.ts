@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { appendFile, copyFile, cp, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, copyFile, cp, lstat, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import type { Config } from './config.ts';
@@ -89,11 +89,20 @@ export class Workspace {
       .sort((a, b) => a - b);
   }
 
-  /** Creates the next run's folder and its report; on the first run, copies in the memory templates the user hasn't provided. */
+  /**
+   * Creates the next run's folder and its report; on the first run, copies in the memory templates the user hasn't provided.
+   * A fresh profile is empty, or a copy of browser.profile_from: for every run with profile: run; with profile_from, also
+   * for the first run and for a run after one the agent ended (end_run).
+   */
   async startRun(startedAt: Date, started: string): Promise<number> {
+    const from = this.config.browser.profile_from;
+    const fresh = this.config.browser.profile === 'run' || (from !== null && (this.run === 0 || (await this.endedBy(this.run)) === 'end_run'));
     this.run += 1;
     await mkdir(path.join(this.runDir, 'shots'), { recursive: true });
-    if (this.config.browser.profile === 'run') await rm(this.profileDir, { recursive: true, force: true });
+    if (fresh) {
+      await rm(this.profileDir, { recursive: true, force: true });
+      if (from) await copyWritable(from, this.profileDir);
+    }
     if (this.run === 1) {
       for (const name of await readdir(path.join(TEMPLATES, 'memory'))) {
         await copyFile(path.join(TEMPLATES, 'memory', name), path.join(this.memoryDir, name), constants.COPYFILE_EXCL).catch((err: NodeJS.ErrnoException) => {
@@ -105,6 +114,15 @@ export class Workspace {
     await writeFile(path.join(this.runDir, 'report.md'), report.replace('{{run}}', String(this.run)).replace('{{started}}', started));
     await this.saveRun({ run: this.run, started_at: startedAt.toISOString() });
     return this.run;
+  }
+
+  private async endedBy(run: number): Promise<string | undefined> {
+    const text = await readFile(path.join(this.dir, runName(run), 'run.json'), 'utf8').catch(() => 'null');
+    try {
+      return (JSON.parse(text) as RunFacts | null)?.ended_by;
+    } catch {
+      return undefined;
+    }
   }
 
   /** True while /memory/README.md is still the template. */
@@ -218,6 +236,16 @@ export class Workspace {
   async close(): Promise<void> {
     if (this.locked) await rm(this.lockFile, { force: true });
     this.locked = false;
+  }
+}
+
+/** Copies a folder and makes the copy writable, so a read-only save point can seed a browser profile. */
+async function copyWritable(from: string, to: string): Promise<void> {
+  await cp(from, to, { recursive: true });
+  for (const name of ['', ...(await readdir(to, { recursive: true }))]) {
+    const file = path.join(to, name);
+    const info = await lstat(file);
+    if (!info.isSymbolicLink()) await chmod(file, info.mode | 0o200);
   }
 }
 

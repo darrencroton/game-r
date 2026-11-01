@@ -34,6 +34,9 @@ defaults:
     device: desktop                  # "desktop" or a Playwright device name, e.g. "Pixel 7", "iPad Pro 11"
     viewport: null                   # [width, height] overrides the device's viewport
     profile: campaign                # campaign: saved game data persists across runs | run: fresh each run
+    profile_from: null               # a saved profile to start from (a save point, e.g. saves/<name>/profile, copied, never changed):
+                                     # the first run, and each run after one the agent ended (end_run, e.g. at a death), start from a
+                                     # fresh copy, so a lost hero comes back as saved; a run after a stop, a limit or a crash carries on
     record_video: false
     trace: false
     keep_shots: referenced           # referenced: when the agent ends a run (end_run), keep only the screenshots (run-NNN/shots/)

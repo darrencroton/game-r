@@ -20,6 +20,7 @@ campaigns:
     url: ./local/index.html
     instructions: Test.
     model: { name: claude-sonnet-5-5 }
+    browser: { profile_from: saves/hero/profile }
     limits: { runs: null, hours: 2 }
   bad:
     url: https://example.com/
@@ -39,6 +40,7 @@ test('campaigns inherit defaults and override only what they set', () => {
   assert.equal(a.limits.hours, 48);
   assert.equal(a.output, path.resolve('/base', 'runs'));
   assert.equal(a.model.secrets_file, path.resolve('/base', '.env'));
+  assert.equal(a.browser.profile_from, null);
 
   const b = resolveCampaign(file, 'b', '/base');
   assert.equal(b.model.name, 'claude-sonnet-5-5');
@@ -46,6 +48,7 @@ test('campaigns inherit defaults and override only what they set', () => {
   assert.equal(b.limits.runs, null);
   assert.equal(b.limits.hours, 2);
   assert.equal(b.url, 'file:///base/local/index.html');
+  assert.equal(b.browser.profile_from, path.resolve('/base', 'saves/hero/profile'));
 });
 
 test('invalid values and unknown campaigns give readable errors', () => {

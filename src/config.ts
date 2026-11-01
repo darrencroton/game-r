@@ -34,6 +34,7 @@ const BrowserSchema = z.object({
   device: z.string().default('desktop'),
   viewport: z.tuple([z.number().int().positive(), z.number().int().positive()]).nullable().default(null),
   profile: z.enum(['campaign', 'run']).default('campaign'),
+  profile_from: z.string().nullable().default(null),
   record_video: z.boolean().default(false),
   trace: z.boolean().default(false),
   keep_shots: z.enum(['referenced', 'all']).default('referenced'),
@@ -133,6 +134,7 @@ export function resolveCampaign(file: ConfigFile, name: string, baseDir: string)
   if (!result.success) throw new ConfigError(`Campaign "${name}":\n${formatIssues(result.error)}`);
   const config = result.data;
   config.output = path.resolve(baseDir, config.output);
+  if (config.browser.profile_from) config.browser.profile_from = path.resolve(baseDir, config.browser.profile_from);
   if (config.model.secrets_file) config.model.secrets_file = path.resolve(baseDir, config.model.secrets_file);
   if (config.system_prompt_file) config.system_prompt_file = path.resolve(baseDir, config.system_prompt_file);
   if (!/^[a-z][a-z0-9+.-]*:/i.test(config.url)) config.url = new URL(`file://${path.resolve(baseDir, config.url)}`).href;

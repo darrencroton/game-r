@@ -172,7 +172,7 @@ runs/<campaign>/
                      transcript.jsonl, shots/ (by default, only those a file names once the agent ends the run), live.jpg, downloads/ (files the game downloads), video/ and trace.zip when enabled, and whatever the agent wrote
   status.json        state, run, calls, tokens, cost, elapsed time, last error
   campaign.lock      one process per campaign at a time; stop.request asks a running campaign to stop
-  profile/           the browser profile (in-game saves persist across runs)
+  profile/           the browser profile (in-game saves persist across runs; browser.profile_from seeds it from a save point)
 ```
 
 Each campaign is self-contained, so several can run at once. Running a campaign
