@@ -120,7 +120,7 @@ node scripts/drive.ts <c> [--headed]       # hand-play driver
 - `read_page {url}` uses a separate headless browser: the game's clock is installed on its whole context and every tab is watched. Plain text beats an accessibility snapshot for docs pages. Only http(s): `file:` would let an injected agent read local files.
 - **What players do that instructions must rule on (Sorceror runs, 2026-10-31 to 11-01):**
   - A player reloaded the page with `act` and chose *Continue* to undo a bad outcome (save-scumming). If that matters, define the win in the Goal (for example "one hero, one unbroken life, nothing undone by reloading").
-  - Players end runs with the hero alive, or spend time trying to revive a dead one. Say in the instructions that neither is allowed, where it matters.
+  - Players end runs with the hero alive, or spend time trying to revive a dead one. Say in the instructions what each costs and whether it's allowed: starting afresh with a new hero can be fair play where undoing events is not.
   - A player stuck on a level gate read the game's public source through `read_page` to explain it. That is allowed unless the instructions keep it to in-game knowledge.
   - A slower model wandered the world map for hours looking for an entrance. Bounding the search in the instructions ("on the starting map, before its edge") narrows it without giving the answer (in trial from 2026-11-01).
 - **Game saves live in the browser profile** (`runs/<c>/profile/` with `browser.profile: campaign`), so they persist across runs. To continue a hero in a new campaign, copy that folder into the new campaign's directory before its first run (not yet tried). An exported save (in `run-NNN/downloads/`) can't be imported by the agent: game-r has no file-upload action.
